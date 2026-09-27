@@ -31,10 +31,14 @@ F, M_ = 0, 1                    # sexes
 GRAIN, FRUIT, DAIRY = 0, 1, 2
 FOODS = ["grain", "fruit", "dairy"]
 K = 4                           # neighbours you can deal with / see in detail
-N_BASE = 10                     # stay, 4 moves, interact, eat, price+, price-, enlist
+# stay, 4 moves, interact, eat, price+, price-, enlist, then intentions: each walks one step toward its
+# target per step (the body's motor skill) and, for work, does the work on arrival. Choosing is still theirs.
+INTENTS = ["harvest_grain", "pick_fruit", "milk", "plant", "haul", "go_home", "go_market", "go_partner",
+           "go_child", "go_station"]
+N_BASE = 10 + len(INTENTS)
 N_PER = 8                       # per-neighbour actions
 (GIVE_FOOD, GIVE_COIN, BUY, TAKE, TALK, COURT, SHUN, DETAIN) = range(N_PER)
-ACT_NAMES = ["stay", "up", "down", "left", "right", "interact", "eat", "price+", "price-", "enlist"] + \
+ACT_NAMES = ["stay", "up", "down", "left", "right", "interact", "eat", "price+", "price-", "enlist"] + INTENTS + \
     [f"{a}>{k}" for k in range(K) for a in ["give_food", "give_coin", "buy", "take", "talk", "court", "shun", "detain"]]
 MOVES = np.zeros((N_BASE + N_PER * K, 2), int)
 MOVES[1:5] = [[0, 1], [0, -1], [-1, 0], [1, 0]]
@@ -50,12 +54,12 @@ class SocietyConfig:
     # places (x0, y0, x1, y1)
     shelves: tuple = (1, 13, 2, 16)
     dock: tuple = (7, 13, 8, 16)
-    fields: tuple = (14, 12, 19, 14)       # grain: plant, grow, harvest
-    orchard: tuple = (15, 8, 19, 9)        # fruit trees: regrow after picking
-    pasture: tuple = (1, 6, 3, 9)          # herd: tend for dairy, regrows
-    market: tuple = (10, 6, 12, 8)
+    fields: tuple = (9, 12, 14, 14)        # grain: plant, grow, harvest
+    orchard: tuple = (15, 7, 19, 8)        # fruit trees: regrow after picking
+    pasture: tuple = (5, 6, 7, 9)          # herd: tend for dairy, regrows
+    market: tuple = (10, 7, 12, 9)         # the three food sources surround the market
     station: tuple = (1, 1, 2, 2)
-    homes: tuple = ((5, 1, 6, 2), (9, 1, 10, 2), (16, 1, 17, 2), (21, 4, 22, 5), (21, 13, 22, 14), (5, 9, 6, 10))
+    homes: tuple = ((4, 1, 5, 2), (9, 1, 10, 2), (14, 1, 15, 2), (19, 1, 20, 2), (20, 12, 21, 13), (1, 8, 2, 9))
     # work and food
     crate_pay: float = 5.0
     team_bonus: float = 0.5
@@ -231,6 +235,9 @@ class Society:
             for s in range(c.founders):
                 pos = [r.integers(0, c.width), r.integers(0, c.height)]
                 self._new_person(m, s, s % 2, r.uniform(18, 35), r.random(4), pos)
+                # founders arrive with varied bodies and provisions, so every craving is met somewhere early on
+                self.nutr[m, s] = r.uniform(0.1, 0.9, 3)
+                self.food[m, s] = r.integers(0, 3, 3)
         if self.ep is None:
             self.ep = {k: np.zeros(self.M) for k in [
                 "births", "deaths", "starved", "malnourished", "crates", "harvest_grain", "harvest_fruit", "harvest_dairy", "trades",
@@ -372,6 +379,53 @@ class Society:
     def alive_mask(self):
         return self.alive.reshape(-1).astype(np.float32)
 
+    def _intentions(self, a):
+        """One step toward each intention's target; which work intentions have arrived."""
+        c, M, S = self.cfg, self.M, self.S
+        ready = self.site_t < 0
+        rel = np.zeros((M, S, 2), int)
+        has = np.zeros((M, S), bool)
+        work = np.zeros((M, S), bool)
+        ar = np.arange(M)[:, None]
+
+        def put(which, r, ok, is_work=False):
+            nonlocal rel, has, work
+            sel = (a == which) & ok
+            rel = np.where(sel[..., None], r, rel)
+            has |= sel
+            work |= sel & is_work
+
+        def sites(mask):
+            r = self._rel_site(mask)
+            d = self.sites[None, None] - self.pos[:, :, None]
+            ok = (np.where(mask[:, None], np.abs(d).sum(-1), 1e9) < 1e9).any(-1)
+            return r.astype(int), ok
+
+        for which, mask in ((10, ready & (self.site_type == GRAIN)), (11, ready & (self.site_type == FRUIT)),
+                            (12, ready & (self.site_type == DAIRY)), (13, (self.site_t == 0) & (self.site_type == GRAIN))):
+            r, ok = sites(mask)
+            put(which, r, ok, True)
+        put(14, np.where(self.carry[..., None], self._rel(c.dock), self._rel(c.shelves)).astype(int), np.ones((M, S), bool), True)
+        hb = np.array(c.homes)[np.clip(self.home, 0, self.H - 1)]
+        hr = np.stack([np.clip(self.pos[..., 0], hb[..., 0], hb[..., 2]) - self.pos[..., 0],
+                       np.clip(self.pos[..., 1], hb[..., 1], hb[..., 3]) - self.pos[..., 1]], -1)
+        put(15, hr, self.home >= 0)
+        put(16, self._rel(c.market).astype(int), np.ones((M, S), bool))
+        pa = np.clip(self.partner, 0, S - 1)
+        put(17, self.pos[ar, pa] - self.pos, (self.partner >= 0) & self.alive[ar, pa])
+        young = np.full((M, S), -1)
+        for s_ in range(S):
+            kids = self._kids(s_)
+            young[:, s_] = np.where(kids.any(1), np.where(kids, self.age, 1e9).argmin(1), -1)
+        yk = np.clip(young, 0, S - 1)
+        put(18, self.pos[ar, yk] - self.pos, young >= 0)
+        put(19, self._rel(c.station).astype(int), np.ones((M, S), bool))
+        at = has & (np.abs(rel).sum(-1) == 0)
+        dx, dy = rel[..., 0], rel[..., 1]
+        horiz = np.abs(dx) >= np.abs(dy)
+        step_vec = np.stack([np.where(horiz, np.sign(dx), 0), np.where(horiz, 0, np.sign(dy))], -1) * has[..., None]
+        return step_vec.astype(int), work & at
+
     # ------------------------------------------------------------------- step
     def step(self, actions):
         c, M, S, r = self.cfg, self.M, self.S, self.rng
@@ -384,12 +438,15 @@ class Society:
         adult = self.age >= c.adult_age
         free = self.alive & (self.detained == 0)
         a = np.where(free, a, 0)
-        base_ok = np.isin(a, [0, 1, 2, 3, 4, 6])
+        base_ok = np.isin(a, [0, 1, 2, 3, 4, 6, 15, 16])          # children can also walk home or to the market
         talk_ok = (a >= N_BASE) & (((a - N_BASE) % N_PER) == TALK)
         a = np.where(child & ~(base_ok | talk_ok), 0, a)
+        step_vec, arrived_work = self._intentions(a)
+        a = np.where(arrived_work, 5, a)                           # at the work site: do the work
         # movement (children and the starving move every other step)
         slow = (child | (self.hunger >= 1)) & ((self.t[:, None] % 2) == 1)
-        self.pos = np.clip(self.pos + MOVES[a] * (~slow)[..., None] * self.alive[..., None], 0, [c.width - 1, c.height - 1])
+        mv = MOVES[np.minimum(a, len(MOVES) - 1)] + step_vec
+        self.pos = np.clip(self.pos + mv * (~slow)[..., None] * self.alive[..., None], 0, [c.width - 1, c.height - 1])
         self.last_ship += 1
         # vectorised simple actions: eat, price, enlist
         self._eat(a == 6, ev)

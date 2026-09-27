@@ -290,11 +290,11 @@ function buildTown(c) {
     place("block", x - 0.15, y, { s: 0.42 }); place("block", x + 0.18, y - 0.1, { s: 0.36, h: 0.21, rot: 0.4 });
   }
   place("flag", c.dock[0] - 0.4, c.dock[3] + 0.4, { s: 1.3 }); place("flag", c.dock[2] + 0.4, c.dock[3] + 0.4, { s: 1.3 });
-  for (let y = c.dock[1]; y <= GH + 3; y++) place("road", c.dock[2] + 1, y, { rot: Math.PI / 2 });
+  for (let y = c.dock[1]; y <= GH + 3; y++) place("road", c.dock[0] - 1, y, { rot: Math.PI / 2 });   // the road out of town
   for (let k = 0; k < 16; k++) {
     const b = models.block.scene.clone(true);
-    const p = W(c.dock[2] + 1.45 + (k % 2) * 0.4, c.dock[1] + Math.floor(k / 4) * 0.5);
-    b.position.set(p.x, 0.02 + (Math.floor(k / 2) % 2) * 0.2, p.z); b.scale.setScalar(0.38); b.visible = false; scene.add(b); dockPile.push(b);
+    const p = W(c.dock[0] + (k % 4) * 0.45, c.dock[3] + 0.75 + Math.floor(k / 8) * 0.45);
+    b.position.set(p.x, 0.02 + (Math.floor(k / 4) % 2) * 0.2, p.z); b.scale.setScalar(0.38); b.visible = false; scene.add(b); dockPile.push(b);
   }
   // pasture: lighter grass, a low fence and a barn
   const [px0, py0, px1, py1] = c.pasture, [pcx, pcy] = mid(c.pasture);
@@ -540,7 +540,7 @@ function onStep(step, prev) {
       if (b && EV_ANIM[kind] && b.dying <= 0) oneShot(b, EV_ANIM[kind]);
       const pi = posOfPid(i, step), pj = j ? posOfPid(j, step) : null;
       if (!pi || kind.startsWith("ate ") || n++ > 6) return;
-      if (kind === "shipped") { flyCoins(W(cfg.dock[2] + 2.5, cfg.dock[3] + 3), pi, 2); floatText(pi, `+${amt}¢`, "#ffd76a"); }
+      if (kind === "shipped") { flyCoins(W(cfg.dock[0] - 1, cfg.dock[3] + 3), pi, 2); floatText(pi, `+${amt}¢`, "#ffd76a"); }
       else if (kind.startsWith("bought ") && pj) { flyCoins(pi, pj, 1); floatText(pi, `bought ${kind.slice(7)}`, "#9be38f"); }
       else if (kind === "theft" && pj) { flyCoins(pj, pi, 2); floatText(pi, `stole ${amt}¢`, "#ff7b6e"); }
       else if (kind === "detained" || kind === "citizens' arrest") floatText(pj || pi, kind === "detained" ? "ARRESTED" : "CITIZENS' ARREST", "#8fb4ff");

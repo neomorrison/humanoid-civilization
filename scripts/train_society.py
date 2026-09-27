@@ -37,7 +37,7 @@ def main():
               f"trades={s['trades']:.0f} food_gifts={s['gifts_food']:.0f} thefts={s['thefts']:.0f} "
               f"partnerships={s['partnerships']:.0f}", flush=True)
 
-    train(env, args.out, args.minutes, MAPPOConfig(hidden=(256, 256), gamma=0.997, horizon=64, entropy_coef=0.01),
+    train(env, args.out, args.minutes, MAPPOConfig(hidden=(256, 256), gamma=0.997, horizon=64, entropy_coef=0.015),
           seed=args.seed, every=args.every, on_snapshot=on_snapshot, resume=args.resume)
 
 
