@@ -66,11 +66,12 @@ opinions move toward the speaker's (weighted by how much the listener trusts the
 ```
 happiness = sustenance (fed, healthy, no cravings)
           + safety     (not robbed, not detained)
-          + belonging  (friends, partner, children's wellbeing weighted by empathy)
+          + belonging  (friends, partner, time together, children's wellbeing weighted by empathy)
+          - distress   (a child's hunger, cravings and sickness, felt by each parent)
           + esteem     (how others regard you)
           + purpose    (productive work)
           + security   (log of savings, weighted by greed)
-          - grief      (a partner or child dies)
+          - grief      (a partner, parent or child dies; a child's death hurts most)
           - death
 ```
 

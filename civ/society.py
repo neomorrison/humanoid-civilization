@@ -122,6 +122,8 @@ class SocietyConfig:
     w_partner: float = 0.012
     w_together: float = 0.015         # companionship: time with your partner, twice as sweet at home
     w_children: float = 0.03
+    w_child_distress: float = 0.06    # a child's hunger, cravings and sickness weigh on each parent
+    child_grief: float = 3.0          # losing a child is the deepest grief (multiplies w_grief)
     w_esteem: float = 0.015
     w_purpose: float = 0.03           # small satisfaction of work itself; its real value is what it feeds
     w_security: float = 0.003
@@ -543,11 +545,15 @@ class Society:
         rew += c.w_esteem * reg * al
         rew += c.w_security * np.log1p(np.maximum(self.money, 0)) * (0.5 + self.traits[..., 1]) * al
         kid_w = np.zeros((M, S))
+        kid_d = np.zeros((M, S))
         for s in range(S):
             kids = self._kids(s)
             n = kids.sum(1)
             kid_w[:, s] = np.where(n > 0, ((1 - self.hunger) * kids).sum(1) / np.maximum(n, 1), 0)
+            suffering = np.clip((self.hunger - 0.4) / 0.6, 0, 1) + craving / 3 + (1 - self.health)
+            kid_d[:, s] = (suffering * kids).sum(1)
         rew += c.w_children * kid_w * (0.5 + self.traits[..., 0]) * al
+        rew -= c.w_child_distress * kid_d * (0.5 + self.traits[..., 0]) * al
         rew = np.where(was_alive, rew, 0.0)
         self.ep["person_steps"] += al.sum(1)
         self.ep["happiness"] += rew.sum(1)
@@ -865,7 +871,8 @@ class Society:
             kin = (self.partner[m, j] == s or self.mother[m, j] == pid or self.father[m, j] == pid
                    or self.mother[m, s] == self.pid[m, j] or self.father[m, s] == self.pid[m, j])
             if kin:
-                rew[m, j] -= c.w_grief * (0.5 + self.traits[m, j, 0])
+                parent = self.mother[m, s] == self.pid[m, j] or self.father[m, s] == self.pid[m, j]
+                rew[m, j] -= c.w_grief * (0.5 + self.traits[m, j, 0]) * (c.child_grief if parent else 1.0)
         p = self.partner[m, s]
         if p >= 0:
             self.partner[m, p] = -1
