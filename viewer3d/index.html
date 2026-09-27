@@ -38,7 +38,7 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; }
 body { background: var(--page); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.45; }
-.app { max-width: 1360px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 16px; }
+.app { max-width: 1360px; margin: 0 auto; padding: 20px 16px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
 .lede { color: var(--muted); max-width: 78ch; margin: 4px 0 0; }
@@ -67,7 +67,7 @@ header { display: grid; gap: 12px; }
   padding: 4px 9px; border-radius: 6px; pointer-events: none; }
 .follow { position: absolute; right: 10px; top: 10px; font: 600 12px var(--font); background: rgba(255,255,255,0.88);
   color: #1d2a30; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 button.ctl { font: 600 13px var(--font); background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
   padding: 7px 14px; cursor: pointer; min-width: 74px; }
 .speed { display: flex; flex-wrap: wrap; gap: 4px; }
