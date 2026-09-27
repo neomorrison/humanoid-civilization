@@ -39,7 +39,8 @@ specialisation worth it. Each person gets better at producing whatever they prod
 spend time together conceive. Children live in their
 mother's home; grown children who pair up take a free house or move in with family.
 Old age raises the chance of death each year. Pregnancy lasts 45 steps and raises the mother's
-hunger rate. Children under 12 cannot work or trade and depend on food handed to them.
+hunger rate. Infants under two nurse when they are with their mother. Children under 12 cannot plant, haul or
+trade; from six they can gather fruit, milk and grain, and otherwise depend on food handed to them.
 
 **Work.** Adults ship crates (5¢ each from the outside world, +50% when someone else shipped in the
 last few steps), farm (sow grain kept back from a harvest, pick fruit, milk the herd; more with skill and with

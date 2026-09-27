@@ -34,7 +34,7 @@ K = 4                           # neighbours you can deal with / see in detail
 # stay, 4 moves, interact, eat, price+, price-, enlist, then intentions: each walks one step toward its
 # target per step (the body's motor skill) and, for work, does the work on arrival. Choosing is still theirs.
 INTENTS = ["harvest_grain", "pick_fruit", "milk", "plant", "haul", "go_home", "go_market", "go_partner",
-           "go_child", "go_station"]
+           "feed_child", "go_station"]
 N_BASE = 10 + len(INTENTS)
 N_PER = 8                       # per-neighbour actions
 (GIVE_FOOD, GIVE_COIN, BUY, TAKE, TALK, COURT, SHUN, DETAIN) = range(N_PER)
@@ -91,6 +91,7 @@ class SocietyConfig:
     intent_patience: int = 30         # give up an errand that has not arrived after this many steps
     adult_age: float = 16.0
     child_age: float = 12.0
+    gather_age: float = 6.0            # children from this age can gather food (not plant, haul or trade)
     old_age: float = 60.0
     # social
     witness_radius: int = 5
@@ -329,7 +330,7 @@ class Society:
             nkids[:, s] = kids.sum(1)
             ya = np.where(kids, self.age, 1e9)
             young[:, s] = np.where(kids.any(1), ya.argmin(1), -1)
-        self._young = young                         # reused by the go_child intention
+        self._young = young
         own = np.concatenate([np.stack([
             self.sex.astype(float), self.age / 70.0, (self.age < c.child_age) * 1.0, self.hunger, self.health,
             np.minimum(self.money, 100) / 50, self.carry * 1.0, self.pregnant / c.gestation,
@@ -442,10 +443,15 @@ class Society:
         tgt = np.where(kid, np.clip(par, 0, S - 1), pa)
         ok = np.where(kid, par >= 0, (self.partner >= 0) & self.alive[ar, pa])
         put(17, self.pos[ar, tgt] - self.pos, ok)
-        young = self._young
-        yk = np.clip(young, 0, S - 1)
-        put(18, self.pos[ar, yk] - self.pos, young >= 0)
+        mine = ((self.mother[:, None, :] == self.pid[:, :, None]) | (self.father[:, None, :] == self.pid[:, :, None])) \
+            & self.alive[:, None, :] & (self.age[:, None, :] < c.adult_age) & (self.pid[:, :, None] > 0)
+        hungriest = np.where(mine.any(-1), np.where(mine, self.hunger[:, None, :], -1).argmax(-1), -1)
+        hk = np.clip(hungriest, 0, S - 1)
+        put(18, self.pos[ar, hk] - self.pos, hungriest >= 0)
+        self._feed_target = hungriest
         put(19, self._rel(c.station).astype(int), np.ones((M, S), bool))
+        near_person = np.isin(a, [17, 18]) & (np.abs(rel).max(-1) <= 1)    # reaching a person means standing by them
+        rel = np.where(near_person[..., None], 0, rel)
         at = has & (np.abs(rel).sum(-1) == 0)
         dx, dy = rel[..., 0], rel[..., 1]
         horiz = np.abs(dx) >= np.abs(dy)
@@ -465,8 +471,9 @@ class Society:
         free = self.alive & (self.detained == 0)
         a = np.where(free, a, 0)
         base_ok = np.isin(a, [0, 1, 2, 3, 4, 6, 15, 16, 17])      # children can also walk home, to the market or to a parent
+        gather_ok = np.isin(a, [5, 10, 11, 12]) & (self.age >= c.gather_age)
         talk_ok = (a >= N_BASE) & (((a - N_BASE) % N_PER) == TALK)
-        a = np.where(child & ~(base_ok | talk_ok), 0, a)
+        a = np.where(child & ~(base_ok | gather_ok | talk_ok), 0, a)
         # someone carrying out an intention keeps at it until it is done; only then do they choose again
         committed = (self.intent >= 0) & self.alive
         a = np.where(committed, self.intent, a)
@@ -476,6 +483,11 @@ class Society:
         keep = is_intent & has & ~at & (self.intent_t < c.intent_patience)
         self.intent = np.where(keep, a, -1)
         a = np.where(arrived_work, 5, a)                           # at the work site: do the work
+        feed = (a == 18) & at & self.alive & (self.food.sum(-1) > 0)
+        for m, i in zip(*np.nonzero(feed)):                         # by your child: hand over what they lack most
+            j = self._feed_target[m, i]
+            if j >= 0 and not self.shun[m, j, i] and self.food[m, j].sum() < c.max_food:
+                self._give_food(m, i, j, rew, ev)
         # movement (children and the starving move every other step)
         slow = (child | (self.hunger >= 1)) & ((self.t[:, None] % 2) == 1)
         mv = MOVES[np.minimum(a, len(MOVES) - 1)] + step_vec
@@ -586,10 +598,27 @@ class Society:
             for mm, ss, tt in zip(m, s, t):
                 ev.append((mm, "ate " + FOODS[tt], ss, -1, 0))
 
+    def _give_food(self, m, i, j, rew, ev):
+        """i hands j one item: what j lacks most, of what i has; gratitude grows with j's need."""
+        c, O = self.cfg, self.opinion
+        t = int(np.where(self.food[m, i] > 0, self.nutr[m, j], 9).argmin())
+        need = 0.5 * (1 - self.nutr[m, j, t]) + 0.5 * self.hunger[m, j]
+        self.food[m, i, t] -= 1
+        self.food[m, j, t] += 1
+        O[m, j, i] = min(1, O[m, j, i] + 0.15 * (0.2 + 0.8 * need))
+        self._witness_good(m, i, 0.03)
+        kid = self.mother[m, j] == self.pid[m, i] or self.father[m, j] == self.pid[m, i]
+        if kid and self.age[m, j] < c.adult_age:
+            rew[m, i] += c.w_purpose * 0.5
+        self.ep["gifts_food"][m] += 1
+        if ev is not None:
+            ev.append((m, "gave " + FOODS[t], i, j, 1))
+
     def _interact(self, m, i, rew, ev):
         c = self.cfg
         p = self.pos[m, i]
-        if not self.carry[m, i] and _in(p, c.shelves):
+        young = self.age[m, i] < c.child_age          # children only gather
+        if not young and not self.carry[m, i] and _in(p, c.shelves):
             self.carry[m, i] = True
             return
         if self.carry[m, i] and _in(p, c.dock):
@@ -609,7 +638,7 @@ class Society:
         k = int(on.argmax())
         ft = self.site_type[k]
         st = self.site_t[m, k]
-        if ft == GRAIN and st == 0 and self.food[m, i, GRAIN] >= c.seed_cost:
+        if ft == GRAIN and st == 0 and self.food[m, i, GRAIN] >= c.seed_cost and not young:
             self.site_t[m, k] = c.grow_steps
             self.food[m, i, GRAIN] -= c.seed_cost
             rew[m, i] += c.w_purpose * 0.3
@@ -637,19 +666,7 @@ class Society:
         refused = self.shun[m, j, i]
         O = self.opinion
         if act == GIVE_FOOD and self.food[m, i].sum() > 0 and not refused and self.food[m, j].sum() < c.max_food:
-            # give what the receiver lacks most, of what you have; gratitude grows with their need
-            t = int(np.where(self.food[m, i] > 0, self.nutr[m, j], 9).argmin())
-            need = 0.5 * (1 - self.nutr[m, j, t]) + 0.5 * self.hunger[m, j]
-            self.food[m, i, t] -= 1
-            self.food[m, j, t] += 1
-            O[m, j, i] = min(1, O[m, j, i] + 0.15 * (0.2 + 0.8 * need))
-            self._witness_good(m, i, 0.03)
-            kid = self.mother[m, j] == self.pid[m, i] or self.father[m, j] == self.pid[m, i]
-            if kid and self.age[m, j] < c.adult_age:
-                rew[m, i] += c.w_purpose * 0.5
-            self.ep["gifts_food"][m] += 1
-            if ev is not None:
-                ev.append((m, "gave " + FOODS[t], i, j, 1))
+            self._give_food(m, i, j, rew, ev)
         elif act == GIVE_COIN and self.money[m, i] >= 1 and not refused:
             self.money[m, i] -= 1
             self.money[m, j] += 1
