@@ -89,7 +89,6 @@ class SocietyConfig:
     heal_rate: float = 0.004
     shelter_heal: float = 1.5          # extra healing while resting at your own home
     intent_patience: int = 30         # give up an errand that has not arrived after this many steps
-    cohabit_window: int = 30           # partners who both slept at home within about half a year live together
     adult_age: float = 16.0
     child_age: float = 12.0
     old_age: float = 60.0
@@ -100,7 +99,7 @@ class SocietyConfig:
     gossip_rate: float = 0.3
     court_window: int = 12
     attract_threshold: float = 0.45
-    conceive_prob: float = 0.03
+    conceive_prob: float = 0.015     # per step that fed, fertile partners spend together
     gestation: int = 45
     fertile_ages: tuple = (18.0, 45.0)
     mutation: float = 0.08
@@ -777,10 +776,10 @@ class Society:
                 self._birth(m, s, rew, ev)
         ready = cand & (self.pregnant == 0) & (self.partner >= 0) & (self.home >= 0) & (self.age >= lo) \
             & (self.age <= hi) & (self.hunger < 0.6)
-        ready &= self.home_seen <= c.cohabit_window
         for m, s in zip(*np.nonzero(ready)):
             pa = self.partner[m, s]
-            if self.alive[m, pa] and self.hunger[m, pa] < 0.6 and self.home_seen[m, pa] <= c.cohabit_window \
+            together = np.abs(self.pos[m, pa] - self.pos[m, s]).max() <= 1
+            if self.alive[m, pa] and self.hunger[m, pa] < 0.6 and together \
                     and self.home[m, pa] == self.home[m, s] and (~self.alive[m]).any() and r.random() < c.conceive_prob:
                 self.pregnant[m, s] = c.gestation
                 if ev is not None:
