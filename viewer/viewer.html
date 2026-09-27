@@ -105,7 +105,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
 .feed li.k-theft { box-shadow: inset 3px 0 0 var(--theft); }
 .feed li.k-arrest { box-shadow: inset 3px 0 0 var(--police); }
 .feed li.k-police-pay { box-shadow: inset 3px 0 0 var(--accent); }
-.feed .empty { color: var(--muted); font-size: 13px; padding: 6px; }
+.feed li.empty { display: block; color: var(--muted); font-size: 13px; padding: 6px; cursor: default; }
 .charts { padding: 14px; }
 .multiples { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 20px; }
 .chart h3 { font-size: 13px; font-weight: 600; margin: 0 0 2px; }
@@ -236,6 +236,9 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
     });
     drawCharts();
     await selectStage(index.stages.length - 1);
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      playing = true; $("play").textContent = "Pause";
+    }
     requestAnimationFrame(tick);
   }
 
@@ -265,13 +268,22 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
     return { W, H, dpr };
   }
 
+  let zoneLabels = [];
+  function drawZoneLabels(ctx, cs) {
+    ctx.font = `600 ${Math.max(9, cs * 0.3)}px Archivo, sans-serif`;
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    zoneLabels.forEach(([text, x, y, ink]) => {
+      const w = ctx.measureText(text).width, pad = cs * 0.08, h = Math.max(9, cs * 0.3) + pad * 2;
+      ctx.fillStyle = css("--surface"); ctx.globalAlpha = 0.85;
+      ctx.fillRect(x + 2, y + 2, w + pad * 2, h); ctx.globalAlpha = 1;
+      ctx.fillStyle = ink; ctx.fillText(text, x + 2 + pad, y + 2 + pad);
+    });
+  }
   function zone(ctx, box, cs, H, fill, label, ink) {
     const [x0, y0, x1, y1] = box;
     const x = x0 * cs, y = H - (y1 + 1) * cs, w = (x1 - x0 + 1) * cs, h = (y1 - y0 + 1) * cs;
     ctx.fillStyle = fill; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = ink; ctx.font = `600 ${Math.max(9, cs * 0.34)}px Archivo, sans-serif`;
-    ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.fillText(label.toUpperCase(), x + 3, y + 3);
+    zoneLabels.push([label.toUpperCase(), x, y, ink]);
     return { x, y, w, h };
   }
 
@@ -282,6 +294,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
     const i0 = Math.min(Math.floor(t), rep.frames.length - 1), i1 = Math.min(i0 + 1, rep.frames.length - 1);
     const f0 = rep.frames[i0], f1 = rep.frames[i1];
     ctx.clearRect(0, 0, W, H);
+    zoneLabels = [];
     ctx.fillStyle = css("--page"); ctx.fillRect(0, 0, W, H);
     ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1;
     for (let x = 0; x <= cfg.width; x++) { ctx.beginPath(); ctx.moveTo(x * cs, 0); ctx.lineTo(x * cs, H); ctx.stroke(); }
@@ -319,6 +332,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
         });
       }
     });
+    drawZoneLabels(ctx, cs);
     // recent events float above the agents involved
     const recent = rep.events.filter((e) => e[0] <= t && e[0] > t - 12 && e[1] !== "ate");
     // agents
@@ -411,7 +425,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
     const ev = rep.events.filter((e) => e[0] <= step && e[1] !== "ate").slice(-40).reverse();
     $("feed").innerHTML = ev.length ? ev.map((e) =>
       `<li class="${evClass(e)}" data-t="${e[0]}"><span class="t">${e[0]}</span><span>${evText(e)}</span></li>`).join("")
-      : '<li class="empty">Nothing yet. Press Play.</li>';
+      : '<li class="empty">Nothing has happened yet.</li>';
   }
 
   function render(force) {
