@@ -99,11 +99,12 @@ class SocietyConfig:
     fertile_ages: tuple = (18.0, 45.0)
     mutation: float = 0.08
     # happiness weights
+    w_alive: float = 0.03             # contentment: being alive and healthy is worth something
     w_hunger: float = 0.04
     w_starving: float = 0.06
     w_health: float = 0.03
     w_variety: float = 0.0
-    w_craving: float = 0.03           # per nutrient: the felt craving for a food your body is running low on
+    w_craving: float = 0.04           # per nutrient: the felt craving for a food your body is running low on
     crave_level: float = 0.5           # craving starts when a nutrient store drops below this
     w_robbed: float = 0.5
     w_detained: float = 0.02
@@ -111,7 +112,7 @@ class SocietyConfig:
     w_partner: float = 0.012
     w_children: float = 0.03
     w_esteem: float = 0.015
-    w_purpose: float = 0.12
+    w_purpose: float = 0.03           # small satisfaction of work itself; its real value is what it feeds
     w_security: float = 0.003
     w_birth: float = 1.5
     w_grief: float = 2.0
@@ -420,6 +421,7 @@ class Society:
         # happiness that accrues every step
         al = self.alive
         variety = (self.nutr > 0.2).sum(-1) / 3.0
+        rew += c.w_alive * self.health * al
         rew -= c.w_hunger * self.hunger * al
         rew -= c.w_starving * (self.hunger >= 1) * al
         rew -= c.w_health * (1 - self.health) * al
