@@ -163,7 +163,9 @@ class TownConfig:
     w_child_distress: float = 0.04
     child_grief: float = 3.0
     w_esteem: float = 0.01
-    w_purpose: float = 0.01            # an hour of work or school
+    w_purpose: float = 0.01            # an hour of work
+    w_learning: float = 0.02           # a child's hour at school: learning and time with other children
+    w_child_school: float = 0.01      # a parent's pride for each hour a child of theirs is at school
     w_security: float = 0.002
     w_birth: float = 3.0               # once
     w_grief: float = 4.0               # once
@@ -786,7 +788,9 @@ class Town:
         pupils = free & ~self.asleep & _in(self.pos, c.places["school"]) & school_now[:, None] & \
             (self.age >= c.school_ages[0]) & (self.age < c.school_ages[1])
         self.edu = np.where(pupils, np.minimum(1.0, self.edu + c.edu_gain), self.edu)
-        rew += c.w_purpose * pupils
+        rew += c.w_learning * pupils
+        kidm_s = self._kids_matrix()
+        rew += c.w_child_school * (kidm_s & pupils[:, None, :]).sum(-1) * (0.5 + self.traits[..., 0])
         self.ep["school_hours"] += pupils.sum(1)
         self.hired_t += 1
         # an errand that has not arrived in time is given up
