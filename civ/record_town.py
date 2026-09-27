@@ -7,6 +7,7 @@ from dataclasses import asdict
 import numpy as np
 
 from .mappo import NumpyPolicy
+from .mappo_rnn import NumpyRNNPolicy
 from .town import ACTIVITIES, DAY, DAYS_PER_YEAR, FOODS, JOBS, SEASONS, YEAR, Town, TownConfig
 
 SLOT_COLS = ["pid", "x", "y", "act", "age10", "hunger", "energy", "health", "money", "g", "f", "d", "job", "home",
@@ -53,11 +54,18 @@ def frame(env: Town, m: int = 0) -> dict:
     return {"t": t, "s": rows, "w": w}
 
 
+def load_policy(path):
+    """A feed-forward or recurrent numpy policy, whichever the file holds."""
+    z = np.load(path)
+    meta = json.loads(bytes(z["meta_json"]).decode())
+    return NumpyRNNPolicy(path) if meta.get("recurrent") else NumpyPolicy(path)
+
+
 def record(policy_path=None, cfg: TownConfig | None = None, seed: int = 7, years: float = 60.0) -> dict:
     """policy_path: a policy .npz, a callable env -> actions (e.g. a scripted routine), or None for random."""
     cfg = cfg or TownConfig()
     env = Town(1, cfg, seed=seed, record=True)
-    pol = NumpyPolicy(policy_path) if isinstance(policy_path, str) else None
+    pol = load_policy(policy_path) if isinstance(policy_path, str) else None
     fn = policy_path if callable(policy_path) else None
     rng = np.random.default_rng(seed)
     obs, _, _ = env.observe()
@@ -77,6 +85,8 @@ def record(policy_path=None, cfg: TownConfig | None = None, seed: int = 7, years
     for _ in range(int(years * YEAR)):
         note_people()
         before = env.pid[0].copy()
+        if pol is not None and hasattr(pol, "reset"):
+            pol.reset(env.reset_mask())
         a = pol.sample(obs, rng) if pol else fn(env) if fn else rng.integers(0, env.act_dim, env.N)
         obs, _, _, _, info = env.step(a)
         after = env.pid[0]

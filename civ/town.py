@@ -519,6 +519,15 @@ class Town:
     def alive_mask(self):
         return self.alive.reshape(-1).astype(np.float32)
 
+    def reset_mask(self):
+        """Slots whose memory must start fresh: empty, or taken by someone new since the last call."""
+        prev = getattr(self, "_last_pid", None)
+        cur = np.where(self.alive, self.pid, -1)
+        self._last_pid = cur.copy()
+        if prev is None:
+            return np.ones(self.N, bool)
+        return ((cur != prev) | ~self.alive).reshape(-1)
+
     def decision_mask(self):
         return (self.alive & (self.intent < 0)).reshape(-1).astype(np.float32)
 
