@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Humanoid Civilization</title>
+<meta name="description" content="A small society of learning agents lives whole lives: they farm, trade, raise families, gossip, steal and police each other. Watch them in 3D.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #eef1ee; --surface: #ffffff; --surface-2: #e6eae6; --ink: #1d2a30; --muted: #5d6b70;
+  --line: #d3d9d5; --grid: #e3e8e4; --accent: #1f6f78; --accent-ink: #ffffff;
+  --grain: #b08a14; --fruit: #c8452f; --dairy: #7d808a; --police: #2d5da6; --theft: #c2413a; --love: #c2417a;
+  --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #11171a; --surface: #172026; --surface-2: #1f2a31; --ink: #e3eaec; --muted: #93a3a9;
+    --line: #2b3942; --grid: #1d2830; --accent: #3aa3ad; --accent-ink: #0c1417;
+    --grain: #e0bb3e; --fruit: #ec6a55; --dairy: #b8bcc6; --police: #5b8ae0; --theft: #ec6a61; --love: #e36a9c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #11171a; --surface: #172026; --surface-2: #1f2a31; --ink: #e3eaec; --muted: #93a3a9;
+  --line: #2b3942; --grid: #1d2830; --accent: #3aa3ad; --accent-ink: #0c1417;
+  --grain: #e0bb3e; --fruit: #ec6a55; --dairy: #b8bcc6; --police: #5b8ae0; --theft: #ec6a61; --love: #e36a9c;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+.app { max-width: 1360px; margin: 0 auto; padding: 20px 16px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+.lede { color: var(--muted); max-width: 78ch; margin: 4px 0 0; }
+.lede a, .note a, .rules a { color: var(--accent); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+header { display: grid; gap: 12px; }
+.stages { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.stages .label { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.chip { font: 500 12px var(--mono); border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.summary { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.summary b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+.stage { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 980px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.viewwrap { padding: 10px; display: grid; gap: 10px; }
+.view { position: relative; width: 100%; aspect-ratio: 16 / 10; max-width: 100%; border-radius: 6px; overflow: hidden; background: #cfe6f2; }
+.view canvas { display: block; width: 100%; height: 100%; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; color: #26414a; background: #cfe6f2; }
+.hint { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #27404a; background: rgba(255,255,255,0.72);
+  padding: 2px 7px; border-radius: 4px; pointer-events: none; }
+.year { position: absolute; left: 10px; top: 10px; font: 600 13px var(--mono); color: #1d2a30; background: rgba(255,255,255,0.86);
+  padding: 4px 9px; border-radius: 6px; pointer-events: none; }
+.follow { position: absolute; right: 10px; top: 10px; font: 600 12px var(--font); background: rgba(255,255,255,0.88);
+  color: #1d2a30; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+button.ctl { font: 600 13px var(--font); background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
+  padding: 7px 14px; cursor: pointer; min-width: 74px; }
+.speed { display: flex; flex-wrap: wrap; gap: 4px; }
+.speed button { font: 500 12px var(--mono); border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 6px; padding: 5px 8px; cursor: pointer; }
+.speed button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.clock { margin-left: auto; font-size: 12px; color: var(--muted); }
+canvas#tl { width: 100%; height: 34px; display: block; cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; flex: none; display: inline-block; }
+.side { display: grid; gap: 16px; min-width: 0; }
+.ledger { padding: 12px 12px 6px; }
+.ledger-scroll { overflow: auto; max-height: 360px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 4px 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: middle; white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface-2); }
+tbody tr.followed { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.who { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.who small { color: var(--muted); font-weight: 400; font-family: var(--mono); }
+.bar { width: 52px; height: 7px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; }
+.foods { font-family: var(--mono); font-size: 12px; }
+.foods b { font-weight: 500; }
+.status { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
+.st-ok { color: var(--muted); } .st-police { color: var(--police); border: 1px solid var(--police); }
+.st-thief { color: var(--theft); border: 1px solid var(--theft); } .st-held { color: var(--page); background: var(--muted); }
+.st-starve { color: var(--theft); } .st-exp { color: var(--love); border: 1px solid var(--love); }
+.st-child { color: var(--muted); }
+.families { padding: 12px; }
+.families ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 220px; overflow-y: auto; }
+.families li { font-size: 13px; }
+.families .kids { color: var(--muted); }
+.feed { padding: 12px; }
+.feed ol { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; display: grid; gap: 2px; }
+.feed li { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.feed li:hover { background: var(--surface-2); }
+.feed li .t { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.feed li.k-crime { box-shadow: inset 3px 0 0 var(--theft); }
+.feed li.k-justice { box-shadow: inset 3px 0 0 var(--police); }
+.feed li.k-love { box-shadow: inset 3px 0 0 var(--love); }
+.feed li.k-life { box-shadow: inset 3px 0 0 var(--accent); }
+.feed li.empty { display: block; color: var(--muted); cursor: default; }
+.charts { padding: 14px; }
+.multiples { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px 20px; }
+.chart h3 { font-size: 13px; font-weight: 600; margin: 0 0 2px; }
+.chart p { margin: 0; font-size: 12px; color: var(--muted); }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px 24px; padding: 14px; }
+.rules p { margin: 0; color: var(--muted); max-width: 64ch; }
+.rules strong { color: var(--ink); }
+.note { font-size: 12px; color: var(--muted); }
+.error { color: var(--theft); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Humanoid Civilization</h1>
+      <p class="lede">A small society of learning agents lives whole lives in one town. They farm three kinds of food and work the warehouse. They trade, raise families, gossip, steal and police each other. Nothing is automatic: every gift, sale, theft, arrest and partnership is someone's choice. Their only reward is how happy their life is. Pick a training stage to watch what they have learned. (<a href="index.html">v3: Town Life</a> · <a href="economy.html">v1: the first economy</a>)</p>
+    </div>
+    <div class="stages" id="stages"><span class="label">Training stage</span></div>
+    <div class="summary" id="summary"></div>
+  </header>
+
+  <section class="stage">
+    <div class="panel viewwrap">
+      <div class="view" id="view">
+        <div class="loading" id="loading">Loading the town…</div>
+        <span class="year" id="year">Year 0</span>
+        <button class="follow" id="follow" type="button" hidden>Stop following</button>
+        <span class="hint">Drag to orbit · scroll to zoom · click a person in the ledger to follow them</span>
+      </div>
+      <div class="controls">
+        <button class="ctl" id="play" type="button">Play</button>
+        <div class="speed" id="speed" role="group" aria-label="Playback speed">
+          <button type="button" data-s="4">slow</button>
+          <button type="button" data-s="10" aria-pressed="true">normal</button>
+          <button type="button" data-s="30">fast</button>
+          <button type="button" data-s="90">years</button>
+        </div>
+        <span class="clock mono" id="clock">step 0</span>
+      </div>
+      <canvas id="tl" aria-label="Timeline; click to jump. Tall red ticks are thefts, tall blue arrests, pink partnerships and births, teal deaths; short ticks are sales and harvests."></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--grain)"></i>grain</span>
+        <span><i class="dot" style="background:var(--fruit)"></i>fruit</span>
+        <span><i class="dot" style="background:var(--dairy)"></i>dairy</span>
+        <span><i class="dot" style="background:var(--love)"></i>partnership, birth</span>
+        <span><i class="dot" style="background:var(--theft)"></i>theft</span>
+        <span><i class="dot" style="background:var(--police)"></i>arrest</span>
+        <span><i class="dot" style="background:var(--accent)"></i>death</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="panel ledger">
+        <h2>People</h2>
+        <div class="ledger-scroll">
+          <table>
+            <thead><tr><th>Name</th><th>Cash</th><th>Hunger</th><th>Food G·F·D</th><th>Partner</th><th>Status</th></tr></thead>
+            <tbody id="ledger"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel families">
+        <h2>Families</h2>
+        <ul id="families"></ul>
+      </div>
+      <div class="panel feed">
+        <h2>What just happened</h2>
+        <ol id="feed"></ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel charts">
+    <h2>How the society changed while they learned</h2>
+    <div class="multiples" id="charts"></div>
+    <p class="note" id="curve-note"></p>
+  </section>
+
+  <section class="panel rules">
+    <p><strong>Lives.</strong> A year is 60 steps. People are born, grow up, pair up, have children at home and die of old age or starvation. Children cannot work or trade and must be fed. Temperament (empathy, greed, boldness, charm) is inherited with mutation.</p>
+    <p><strong>Food.</strong> Grain grows in planted fields, fruit on orchard trees, dairy from the herd in the pasture. Eating the same food again helps less, and going without one harms health, so everyone wants all three. Each person gets better at what they practise.</p>
+    <p><strong>Trade and work.</strong> Crates carried from the warehouse to the dock earn coins from the outside world, more when others ship at the same time. Food changes hands only as a gift or as a sale at the seller's own price.</p>
+    <p><strong>Trust.</strong> Everyone forms opinions of everyone else from how they are treated and what they see, and gossip spreads them. Anyone can shun someone and refuse to deal with them. Enlisted police can detain a thief they saw; two witnesses together can make a citizens' arrest, of police too. Nobody pays police unless they choose to.</p>
+    <p><strong>Happiness</strong> is the only reward: fed, healthy and a varied diet; safe; friends, a partner and thriving children; being well regarded; useful work; and a little for savings. See <a href="https://github.com/neomorrison/humanoid-civilization/blob/main/DESIGN.md">DESIGN.md</a>.</p>
+    <p class="note">3D models by <a href="https://kenney.nl" rel="noopener">Kenney</a> (CC0), rendered with three.js. Source: <a href="https://github.com/neomorrison/humanoid-civilization" rel="noopener">github.com/neomorrison/humanoid-civilization</a>.</p>
+  </section>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const $ = (id) => document.getElementById(id);
+const cssVar = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const LINE_COLORS = [0xe07a5f, 0x3d9970, 0x5b8ae0, 0xd4a017, 0x9b5de5, 0x00a6a6, 0xe56399, 0x7a9e3a, 0xf28f3b, 0x6c8ead];
+const FEM = ["Ada", "Bea", "Cleo", "Dina", "Esme", "Faye", "Gia", "Hana", "Iris", "Juno", "Kira", "Lena", "Mira", "Nora", "Opal", "Pia", "Rhea", "Sara", "Tess", "Uma", "Vera", "Wren", "Yara", "Zoe"];
+const MAS = ["Abe", "Ben", "Cal", "Dev", "Eli", "Finn", "Gus", "Hal", "Ivo", "Jon", "Kai", "Leo", "Max", "Ned", "Omar", "Pax", "Rex", "Sam", "Tom", "Ugo", "Vic", "Will", "Yuri", "Zed"];
+const SUR = ["Moss", "Reed", "Stone", "Vale", "Hart", "Fenn", "Brook", "Ash", "Lark", "Thorn", "Wells", "Gray", "Frost", "Hale", "Pike"];
+
+let index = null, rep = null, t = 0, playing = false, speed = 10, lastStep = -1, stageIdx = 0, followPid = -1;
+let people = {}, pidName = {}, pidLine = {}, kidsOf = {}, shipsBefore = [];
+
+// ------------------------------------------------------------------ 3D scene
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xcfe6f2); scene.fog = new THREE.Fog(0xcfe6f2, 45, 85);
+const camera = new THREE.PerspectiveCamera(40, 16 / 10, 0.1, 250);
+camera.position.set(-3, 17, 19);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.46; controls.minDistance = 4; controls.maxDistance = 55;
+controls.target.set(0, 0, 1);
+scene.add(new THREE.HemisphereLight(0xdff1ff, 0x6f8f5a, 1.0));
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.1);
+sun.position.set(-12, 20, 9); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -19, right: 19, top: 15, bottom: -15, near: 1, far: 60 }); sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+let GW = 24, GH = 18;
+const W = (x, y) => new THREE.Vector3(x - (GW - 1) / 2, 0, -(y - (GH - 1) / 2));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 80), new THREE.MeshLambertMaterial({ color: 0x8cbd66 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const soilMat = new THREE.MeshLambertMaterial({ color: 0x8a6440 });
+const pastureMat = new THREE.MeshLambertMaterial({ color: 0xa6d47f });
+const appleMat = new THREE.MeshLambertMaterial({ color: 0xd8432b });
+const ringMat = new THREE.MeshBasicMaterial({ color: 0xe0443a, transparent: true, opacity: 0.85 });
+
+const loader = new GLTFLoader();
+const models = {};
+async function loadModel(key, path) {
+  const g = await loader.loadAsync(path);
+  g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  models[key] = g;
+}
+function recolor(obj, hex, mix = 1) {
+  obj.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.color = new THREE.Color(1, 1, 1).lerp(new THREE.Color(hex), mix); } });
+}
+function place(key, x, y, { s = 1, rot = 0, h = 0, tint = null } = {}) {
+  const o = models[key].scene.clone(true);
+  const p = W(x, y); o.position.set(p.x, h, p.z); o.scale.setScalar(s); o.rotation.y = rot;
+  if (tint != null) recolor(o, tint);
+  scene.add(o); return o;
+}
+function label(text, x, y) {
+  const c = document.createElement("canvas"); c.width = 320; c.height = 72;
+  const g = c.getContext("2d"); g.font = "700 34px Archivo, Arial, sans-serif";
+  const w = Math.min(312, g.measureText(text).width + 36); g.fillStyle = "rgba(255,255,255,0.88)"; g.beginPath(); g.roundRect(160 - w / 2, 8, w, 56, 12); g.fill();
+  g.fillStyle = "#1d2a30"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, 160, 37);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  const p = W(x, y); sp.position.set(p.x, 3.4, p.z); sp.scale.set(3.4, 0.765, 1); sp.renderOrder = 5; scene.add(sp);
+}
+
+let siteObjs = [], dockPile = [], homeFlags = [], cfg = null, clouds = [];
+function buildTown(c) {
+  cfg = c; GW = c.width; GH = c.height;
+  const mid = (b) => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+  const tiles = (box, key) => { const [x0, y0, x1, y1] = box; for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) place(key, x, y); };
+  tiles(c.dock, "pavement"); tiles(c.market, "pavement"); tiles(c.station, "pavement"); tiles(c.shelves, "pavement");
+  const [mx, my] = mid(c.market);
+  place("fountain", mx, my, { s: 1.2, h: 0.01 });
+  place("banner", c.market[0] - 0.45, c.market[3] + 0.45, { s: 1.5 }); place("banner", c.market[2] + 0.45, c.market[3] + 0.45, { s: 1.5 });
+  // warehouse and dock
+  place("garage", (c.shelves[0] + c.shelves[2]) / 2, c.shelves[3] + 1.9, { s: 3.0 });
+  for (let x = c.shelves[0]; x <= c.shelves[2]; x++) for (let y = c.shelves[1]; y <= c.shelves[3]; y++) {
+    place("block", x - 0.15, y, { s: 0.42 }); place("block", x + 0.18, y - 0.1, { s: 0.36, h: 0.21, rot: 0.4 });
+  }
+  place("flag", c.dock[0] - 0.4, c.dock[3] + 0.4, { s: 1.3 }); place("flag", c.dock[2] + 0.4, c.dock[3] + 0.4, { s: 1.3 });
+  for (let y = c.dock[1]; y <= GH + 3; y++) place("road", c.dock[0] - 1, y, { rot: Math.PI / 2 });   // the road out of town
+  for (let k = 0; k < 16; k++) {
+    const b = models.block.scene.clone(true);
+    const p = W(c.dock[0] + (k % 4) * 0.45, c.dock[3] + 0.75 + Math.floor(k / 8) * 0.45);
+    b.position.set(p.x, 0.02 + (Math.floor(k / 4) % 2) * 0.2, p.z); b.scale.setScalar(0.38); b.visible = false; scene.add(b); dockPile.push(b);
+  }
+  // pasture: lighter grass, a low fence and a barn
+  const [px0, py0, px1, py1] = c.pasture, [pcx, pcy] = mid(c.pasture);
+  const pg = new THREE.Mesh(new THREE.PlaneGeometry(px1 - px0 + 1.6, py1 - py0 + 1.6), pastureMat);
+  const pc = W(pcx, pcy); pg.rotation.x = -Math.PI / 2; pg.position.set(pc.x, 0.012, pc.z); pg.receiveShadow = true; scene.add(pg);
+  for (let y = py0; y <= py1; y += 2) place("wall", px1 + 0.9, y + 0.5, { s: 0.8, rot: Math.PI / 2 });
+  for (let x = px0; x <= px1; x += 2) { place("wall", x + 0.5, py1 + 0.9, { s: 0.8 }); place("wall", x + 0.5, py0 - 0.9, { s: 0.8 }); }
+  place("house-d", px0 - 1.25, pcy, { s: 1.6, rot: Math.PI / 2, tint: 0xd9745a });
+  // fields: tilled soil under every plot
+  const [fx0, fy0, fx1, fy1] = c.fields;
+  const soil = new THREE.Mesh(new THREE.PlaneGeometry(fx1 - fx0 + 1.2, fy1 - fy0 + 1.2), new THREE.MeshLambertMaterial({ color: 0xa27b50 }));
+  const fc = W((fx0 + fx1) / 2, (fy0 + fy1) / 2); soil.rotation.x = -Math.PI / 2; soil.position.set(fc.x, 0.011, fc.z); soil.receiveShadow = true; scene.add(soil);
+  // food sites
+  siteObjs = rep.sites.map(([sx, sy], k) => {
+    const type = rep.site_type[k], p = W(sx, sy), o = {};
+    if (type === 0) {
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.06, 0.84), soilMat); bed.position.set(p.x, 0.03, p.z); bed.receiveShadow = true; scene.add(bed);
+      o.crop = models.sprout.scene.clone(true); o.crop.position.set(p.x, 0.05, p.z); scene.add(o.crop);
+      o.ripe = models.sprout.scene.clone(true); o.ripe.position.set(p.x, 0.05, p.z); o.ripe.scale.setScalar(3.2);
+      recolor(o.ripe, 0xf0c850); scene.add(o.ripe);
+    } else if (type === 1) {
+      o.tree = place("tree", sx, sy, { s: 1.05, rot: k });
+      o.fruit = new THREE.Group();
+      [[-0.18, 1.05, 0.1], [0.16, 1.2, -0.08], [0.02, 1.35, 0.16], [0.2, 0.95, 0.12], [-0.12, 1.25, -0.15]].forEach(([dx, dy, dz]) => {
+        const a = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), appleMat); a.position.set(dx, dy, dz); a.castShadow = true; o.fruit.add(a);
+      });
+      o.fruit.position.copy(p); scene.add(o.fruit);
+    } else {
+      // dairy: a milk churn (cream crate) appears when the herd is ready to milk
+      o.dairy = new THREE.Group();
+      [[0, 0, 0.3], [0.24, 0.06, 0.24]].forEach(([dx, dz, s]) => {
+        const b = models.block.scene.clone(true); b.scale.setScalar(s); b.position.set(dx, 0, dz); recolor(b, 0xfff4d6); o.dairy.add(b);
+      });
+      o.dairy.position.copy(p); scene.add(o.dairy);
+    }
+    return o;
+  });
+  // homes (a flag flies when someone lives there)
+  homeFlags = c.homes.map((b, h) => {
+    const [x0, y0, x1, y1] = b, [hx, hy] = mid(b);
+    tiles(b, "pavement");
+    place(["house-a", "house-b", "house-d"][h % 3], hx, hy - 1.35, { s: 1.6 });
+    const f = place("flag", x1 + 0.4, y1 + 0.35, { s: 0.9 }); f.visible = false; return f;
+  });
+  place("house-c", c.station[0] - 0.2, c.station[1] - 2.0, { s: 2.2, tint: 0x9fb8e6 });
+  place("flag", c.station[2] + 0.45, c.station[3] + 0.45, { s: 1.4 });
+  label("warehouse", ...mid(c.shelves)); label("dock", ...mid(c.dock)); label("market", mx, my); label("police", ...mid(c.station));
+  label("fields", (fx0 + fx1) / 2, (fy0 + fy1) / 2); label("orchard", ...mid(c.orchard)); label("pasture", pcx, pcy);
+  // scenery
+  [[-2.6, 3], [-2.8, 12], [4.5, 18.6], [12, 18.2], [19.5, 18.5], [26, 11], [26, 0], [12.5, -2.8], [-2.8, -1.5], [26.2, 16.5], [3, -3], [20, -3]]
+    .forEach(([x, y], i) => place("tree", x, y, { s: 1.5 + (i % 3) * 0.25, rot: i }));
+  [[-5, 17], [29, 18], [-5, -4], [29, -4]].forEach(([x, y]) => place("trees-tall", x, y, { s: 3 }));
+  clouds = [[-4, 13, 6], [8, 14, -9], [17, 12.5, 4], [27, 14, -5]].map(([x, h, z]) => {
+    const cl = models.cloud.scene.clone(true); cl.position.set(x - 12, h, z); cl.scale.setScalar(2.4);
+    cl.traverse((o) => { if (o.isMesh) o.castShadow = false; }); scene.add(cl); return cl;
+  });
+}
+
+// ------------------------------------------------------------------ people
+let bodies = [];   // one per slot
+function makeTag() {
+  const c = document.createElement("canvas"); c.width = 300; c.height = 90;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set(2.1, 0.63, 1); sp.renderOrder = 10;
+  return { sprite: sp, canvas: c, tex, key: "" };
+}
+function drawTag(tag, pid, age, money, hunger, flag, color) {
+  const key = `${pid}|${Math.floor(age)}|${Math.round(money)}|${Math.round(hunger * 20)}|${flag}`;
+  if (tag.key === key) return; tag.key = key;
+  const g = tag.canvas.getContext("2d"); g.clearRect(0, 0, 300, 90);
+  g.fillStyle = "rgba(20,28,32,0.82)"; g.beginPath(); g.roundRect(4, 6, 292, 54, 12); g.fill();
+  g.fillStyle = "#" + color.toString(16).padStart(6, "0"); g.beginPath(); g.arc(26, 33, 10, 0, Math.PI * 2); g.fill();
+  const sexMark = people[pid] && people[pid].sex === 0 ? "♀" : "♂";
+  g.fillStyle = "#ffffff"; g.font = "600 23px Archivo, Arial, sans-serif"; g.textBaseline = "middle";
+  g.fillText(`${first(pid)} ${sexMark}${Math.floor(age)}`, 42, 34);
+  g.font = "500 21px 'IBM Plex Mono', monospace"; g.textAlign = "right"; g.fillStyle = "#ffd76a";
+  g.fillText(Math.round(money) + "¢", 286, 34); g.textAlign = "left";
+  g.fillStyle = "rgba(255,255,255,0.18)"; g.beginPath(); g.roundRect(16, 66, 268, 9, 4); g.fill();
+  g.fillStyle = hunger >= 0.99 ? "#ff6b5e" : hunger > 0.7 ? "#f2b53a" : "#9bd1a0"; g.beginPath(); g.roundRect(16, 66, Math.max(6, 268 * hunger), 9, 4); g.fill();
+  if (flag) {
+    g.font = "700 17px Archivo, Arial"; g.textAlign = "center";
+    g.fillStyle = flag === "EXPECTING" ? "#ff9ccc" : flag === "POLICE" ? "#9fc0ff" : "#ff7b6e"; g.fillText(flag, 150, 86); g.textAlign = "left";
+  }
+  tag.tex.needsUpdate = true;
+}
+function makeBody() {
+  const root = new THREE.Group();
+  const body = SkeletonUtils.clone(models.character.scene); body.scale.setScalar(1.9); root.add(body);
+  const mixer = new THREE.AnimationMixer(body); const actions = {};
+  models.character.animations.forEach((clip) => { actions[clip.name] = mixer.clipAction(clip); });
+  const crate = models.block.scene.clone(true); crate.scale.setScalar(0.42); crate.position.set(0, 0.95, 0.45); crate.visible = false; root.add(crate);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; ring.visible = false; root.add(ring);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.4, 28), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = 0.02; root.add(disc);
+  const tag = makeTag(); tag.sprite.position.set(0, 2.2, 0); root.add(tag.sprite);
+  root.visible = false; scene.add(root);
+  return { root, body, mixer, actions, crate, ring, disc, tag, pid: -1, base: null, baseAction: null, yaw: 0, dying: 0 };
+}
+function setBase(b, name, instant) {
+  if (b.base === name || !b.actions[name]) return;
+  const next = b.actions[name]; next.reset().setLoop(THREE.LoopRepeat).setEffectiveWeight(1).play();
+  if (b.baseAction && !instant) b.baseAction.crossFadeTo(next, 0.25, false); else if (b.baseAction) b.baseAction.stop();
+  b.baseAction = next; b.base = name;
+}
+function assign(b, pid) {
+  b.pid = pid; b.tag.key = ""; b.dying = 0;
+  const col = pidLine[pid] ?? 0xffffff;
+  recolor(b.body, col, 0.6);
+  b.mixer.stopAllAction(); b.base = null; b.baseAction = null; setBase(b, "idle", true);
+}
+function oneShot(b, name) {
+  const act = b.actions[name]; if (!act) return;
+  act.reset().setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = name === "die"; act.fadeIn(0.1).play();
+  if (b.baseAction) b.baseAction.fadeOut(0.1);
+  if (name === "die") return;
+  const back = (e) => { if (e.action !== act) return; if (b.baseAction) b.baseAction.reset().fadeIn(0.2).play(); b.mixer.removeEventListener("finished", back); };
+  b.mixer.addEventListener("finished", back);
+}
+
+// ------------------------------------------------------------------ coins and floating text
+let flights = [], floaters = [];
+function flyCoins(from, to, n) {
+  for (let k = 0; k < n; k++) {
+    const c = models.coin.scene.clone(true); c.scale.setScalar(0.9); c.visible = false; scene.add(c);
+    flights.push({ obj: c, from: from.clone().setY(0.9), to: to.clone().setY(0.9), t: -k * 0.08, dur: 0.7 });
+  }
+}
+function floatText(pos, text, color) {
+  if (floaters.length > 24) return;
+  const c = document.createElement("canvas"); c.width = 320; c.height = 64;
+  const g = c.getContext("2d"); g.font = "700 30px Archivo, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.lineWidth = 6; g.strokeStyle = "rgba(15,20,24,0.8)"; g.strokeText(text, 160, 32); g.fillStyle = color; g.fillText(text, 160, 32);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set(2.6, 0.52, 1); sp.position.copy(pos).setY(2.9); sp.renderOrder = 11; scene.add(sp);
+  floaters.push({ sp, t: 0, dur: 1.6 });
+}
+
+// ------------------------------------------------------------------ replay helpers
+const stride = () => rep.stride || 1;
+const YEAR = () => rep.year || 60;
+const nSteps = () => (rep.frames.length - 1) * stride();
+const frameAt = (step) => rep.frames[Math.min(rep.frames.length - 1, Math.max(0, Math.floor(step / stride())))];
+function slotPos(s, tt) {
+  const k = tt / stride(), i0 = Math.min(Math.floor(k), rep.frames.length - 1), i1 = Math.min(i0 + 1, rep.frames.length - 1), f = k - Math.floor(k);
+  const a = rep.frames[i0].pos[s], b = rep.frames[i1].pos[s];
+  const jump = rep.frames[i1].pid[s] !== rep.frames[i0].pid[s] || Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) > stride() + 1;
+  const u = jump ? 0 : f;
+  return W(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u);
+}
+function slotOf(frame, pid) { for (let s = 0; s < frame.pid.length; s++) if (frame.pid[s] === pid && frame.alive[s]) return s; return -1; }
+function posOfPid(pid, step) {
+  // look in this frame, then the previous one (someone who just died)
+  for (const st of [step, step - stride()]) { const f = frameAt(st); const s = f.pid.indexOf(pid); if (s >= 0) return slotPos(s, Math.max(0, st)); }
+  return null;
+}
+function nameAll() {
+  people = rep.people; pidName = {}; pidLine = {}; kidsOf = {};
+  let founders = 0;
+  Object.keys(people).map(Number).sort((a, b) => a - b).forEach((pid) => {
+    const p = people[pid];
+    const given = (p.sex === 0 ? FEM : MAS)[(pid * 7 + 3) % 24];
+    let sur, line;
+    if (!p.mother && !p.father) { sur = SUR[founders % SUR.length]; line = LINE_COLORS[founders % LINE_COLORS.length]; founders++; }
+    else {
+      const dad = pidName[p.father] ? p.father : p.mother;           // children take the father's surname and the mother's colour
+      sur = pidName[dad] ? pidName[dad].split(" ")[1] : SUR[pid % SUR.length];
+      line = pidLine[p.mother] ?? pidLine[p.father] ?? LINE_COLORS[pid % LINE_COLORS.length];
+      [p.mother, p.father].forEach((q) => { if (q) (kidsOf[q] = kidsOf[q] || []).push(pid); });
+    }
+    pidName[pid] = `${given} ${sur}`; pidLine[pid] = line;
+  });
+  let n = 0; shipsBefore = [];
+  const ships = rep.events.filter((e) => e[1] === "shipped").map((e) => e[0]);
+  for (let s = 0; s <= nSteps(); s++) { while (n < ships.length && ships[n] <= s) n++; shipsBefore.push(n); }
+}
+const nm = (pid) => pidName[pid] || (pid ? `#${pid}` : "someone");
+const first = (pid) => nm(pid).split(" ")[0];
+
+const EV_ANIM = { theft: "attack-melee-right", detained: "interact-right", "citizens' arrest": "interact-right", "gave coin": "interact-left",
+  "bought grain": "interact-right", "bought fruit": "interact-right", "bought dairy": "interact-right", "gave grain": "interact-left",
+  "gave fruit": "interact-left", "gave dairy": "interact-left", planted: "pick-up", "harvested grain": "pick-up", "harvested fruit": "pick-up",
+  "harvested dairy": "pick-up", shipped: "interact-right", partnered: "emote-yes", separated: "emote-no", shunned: "emote-no",
+  "ate grain": "emote-yes", "ate fruit": "emote-yes", "ate dairy": "emote-yes", enlisted: "emote-yes" };
+function evText(e) {
+  const [, kind, i, j, amt] = e, a = nm(i), b = nm(j);
+  if (kind.startsWith("bought ")) return `${a} bought ${kind.slice(7)} from ${b} for ${amt}¢`;
+  if (kind.startsWith("gave ") && kind !== "gave coin") return `${a} gave ${b} some ${kind.slice(5)}`;
+  if (kind.startsWith("harvested ")) return `${a} harvested ${amt} ${kind.slice(10)}`;
+  if (kind.startsWith("ate ")) return `${a} ate ${kind.slice(4)}`;
+  return ({ "gave coin": `${a} gave ${b} a coin`, theft: `${a} stole ${amt}¢ from ${b}`, detained: `${a} (police) detained ${b} and returned ${amt}¢`,
+    "citizens' arrest": `${a} and other witnesses detained ${b}`, planted: `${a} planted grain`, shipped: `${a} shipped a crate, +${amt}¢`,
+    partnered: `${a} and ${b} became partners`, separated: `${a} left ${b}`, shunned: `${a} shuns ${b}`, forgave: `${a} forgave ${b}`,
+    courted: `${a} courted ${b}`, talked: `${a} chatted with ${b}`, expecting: `${a} is expecting ${b ? b.split(" ")[0] + "'s" : "a"} child`,
+    born: `${a} was born to ${b}`, "died (starved)": `${a} starved to death at ${Math.floor(amt)}`, "died (malnutrition)": `${a} died of malnutrition at ${Math.floor(amt)}`, "died (old age)": `${a} died of old age at ${Math.floor(amt)}`,
+    enlisted: `${a} joined the police`, resigned: `${a} left the police` })[kind] || `${a}: ${kind}`;
+}
+function evClass(k) {
+  if (k === "theft") return "k-crime";
+  if (k === "detained" || k === "citizens' arrest" || k === "enlisted") return "k-justice";
+  if (k === "partnered" || k === "born" || k === "expecting") return "k-love";
+  if (k.startsWith("died")) return "k-life";
+  return "";
+}
+
+function onStep(step, prev) {
+  const f = frameAt(step);
+  rep.sites.forEach((_, k) => {
+    const st = f.sites[k], o = siteObjs[k], type = rep.site_type[k];
+    if (type === 0) {
+      o.crop.visible = st > 0; o.ripe.visible = st < 0;
+      if (st > 0) o.crop.scale.setScalar(0.8 + 2.2 * (1 - st / cfg.grow_steps));
+    } else if (type === 1) o.fruit.visible = st < 0;
+    else o.dairy.visible = st < 0;
+  });
+  const shipped = shipsBefore[Math.min(step, shipsBefore.length - 1)] || 0;
+  dockPile.forEach((b, k) => { b.visible = k < Math.min(shipped, dockPile.length); });
+  const occupied = new Set(f.home.filter((h, s) => h >= 0 && f.alive[s]));
+  homeFlags.forEach((fl, h) => { fl.visible = occupied.has(h); });
+  for (let s = 0; s < f.pid.length; s++) {
+    const b = bodies[s];
+    if (!f.alive[s]) {
+      if (b.root.visible && b.dying <= 0) {
+        if (prev >= 0 && step > prev && step - prev < 16) { b.dying = 1.6; oneShot(b, "die"); } else b.root.visible = false;
+      }
+      continue;
+    }
+    if (b.pid !== f.pid[s]) assign(b, f.pid[s]);
+    b.root.visible = true; b.dying = 0;
+    const age = f.age[s], sc = age < 16 ? 0.45 + 0.55 * age / 16 : 1;
+    b.root.scale.setScalar(sc); b.tag.sprite.scale.set(2.1 / sc, 0.63 / sc, 1); b.tag.sprite.position.y = 2.2 / sc * Math.min(1, 0.55 + sc * 0.45);
+    b.crate.visible = !!f.carry[s]; b.ring.visible = !!f.seen_thief[s];
+    const flag = f.detained[s] ? "DETAINED" : f.hunger[s] >= 0.99 ? "STARVING" : f.pregnant[s] ? "EXPECTING" : f.enlisted[s] ? "POLICE" : "";
+    drawTag(b.tag, f.pid[s], age, f.money[s], f.hunger[s], flag, pidLine[f.pid[s]] ?? 0xffffff);
+    b.disc.material.color.set(f.enlisted[s] ? 0x2d5da6 : (pidLine[f.pid[s]] ?? 0xffffff));
+  }
+  if (prev >= 0 && step > prev && step - prev < 16) {
+    let n = 0;
+    rep.events.filter((e) => e[0] > prev && e[0] <= step && e[1] !== "talked" && e[1] !== "courted").forEach((e) => {
+      const [, kind, i, j, amt] = e;
+      const s = f.pid.indexOf(i), b = s >= 0 ? bodies[s] : null;
+      if (b && EV_ANIM[kind] && b.dying <= 0) oneShot(b, EV_ANIM[kind]);
+      const pi = posOfPid(i, step), pj = j ? posOfPid(j, step) : null;
+      if (!pi || kind.startsWith("ate ") || n++ > 6) return;
+      if (kind === "shipped") { flyCoins(W(cfg.dock[0] - 1, cfg.dock[3] + 3), pi, 2); floatText(pi, `+${amt}¢`, "#ffd76a"); }
+      else if (kind.startsWith("bought ") && pj) { flyCoins(pi, pj, 1); floatText(pi, `bought ${kind.slice(7)}`, "#9be38f"); }
+      else if (kind === "theft" && pj) { flyCoins(pj, pi, 2); floatText(pi, `stole ${amt}¢`, "#ff7b6e"); }
+      else if (kind === "detained" || kind === "citizens' arrest") floatText(pj || pi, kind === "detained" ? "ARRESTED" : "CITIZENS' ARREST", "#8fb4ff");
+      else if (kind === "gave coin" && pj) { flyCoins(pi, pj, 1); floatText(pi, "gave a coin", "#ffffff"); }
+      else if (kind.startsWith("gave ")) floatText(pi, `shared ${kind.slice(5)}`, "#9be38f");
+      else if (kind === "partnered") floatText(pi, "♥ partners", "#ff9ccc");
+      else if (kind === "born") floatText(pi, "a baby!", "#ff9ccc");
+      else if (kind === "expecting") floatText(pi, "expecting", "#ff9ccc");
+      else if (kind.startsWith("harvested ")) floatText(pi, `+${amt} ${kind.slice(10)}`, "#e8d27a");
+      else if (kind.startsWith("died")) floatText(pi, kind === "died (old age)" ? "passed away" : kind.slice(6, -1), "#cfd6da");
+      else if (kind === "shunned") floatText(pi, "shuns " + first(j), "#ff9f8f");
+      else if (kind === "enlisted") floatText(pi, "joined police", "#9fc0ff");
+    });
+  }
+}
+
+function updateBodies(dt) {
+  const k = t / stride(), i0 = Math.min(Math.floor(k), rep.frames.length - 1), i1 = Math.min(i0 + 1, rep.frames.length - 1);
+  const f0 = rep.frames[i0], f1 = rep.frames[i1];
+  bodies.forEach((b, s) => {
+    if (b.dying > 0) { b.dying -= dt; b.mixer.update(dt); if (b.dying <= 0) b.root.visible = false; return; }
+    if (!b.root.visible) return;
+    const p = slotPos(s, t); b.root.position.set(p.x, 0, p.z);
+    const dx = f1.pos[s][0] - f0.pos[s][0], dy = f1.pos[s][1] - f0.pos[s][1];
+    const moving = playing && (dx !== 0 || dy !== 0) && Math.abs(dx) + Math.abs(dy) <= stride() + 1 && f1.pid[s] === f0.pid[s];
+    if (moving) { let d = Math.atan2(dx, -dy) - b.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); b.yaw += d * Math.min(1, dt * 12); }
+    b.root.rotation.y = b.yaw;
+    let base = "idle";
+    if (f0.detained[s]) base = "sit";
+    else if (moving) base = speed > 25 ? "sprint" : "walk";
+    else if (f0.carry[s]) base = "holding-both";
+    setBase(b, base, false);
+    b.mixer.timeScale = moving ? Math.min(2.2, 0.7 + speed / 25) : 1;
+    b.mixer.update(dt);
+  });
+}
+
+// ------------------------------------------------------------------ panels
+function renderLedger(step) {
+  const f = frameAt(step), rows = [];
+  for (let s = 0; s < f.pid.length; s++) {
+    if (!f.alive[s]) continue;
+    const pid = f.pid[s], age = f.age[s];
+    let st = '<span class="status st-ok">free</span>';
+    if (f.detained[s]) st = '<span class="status st-held">detained</span>';
+    else if (f.seen_thief[s]) st = '<span class="status st-thief">seen stealing</span>';
+    else if (f.hunger[s] >= 0.99) st = '<span class="status st-starve">starving</span>';
+    else if (f.pregnant[s]) st = '<span class="status st-exp">expecting</span>';
+    else if (f.enlisted[s]) st = '<span class="status st-police">police</span>';
+    else if (age < 12) st = '<span class="status st-child">child</span>';
+    const hcol = f.hunger[s] >= 0.99 ? "var(--theft)" : f.hunger[s] > 0.7 ? "var(--grain)" : "var(--muted)";
+    const partner = f.partner[s] >= 0 ? first(f.pid[f.partner[s]]) : "";
+    const col = "#" + (pidLine[pid] ?? 0xffffff).toString(16).padStart(6, "0");
+    const fd = f.food[s];
+    rows.push([pid, `<tr data-pid="${pid}" class="${pid === followPid ? "followed" : ""}"><td><span class="who"><i class="dot" style="background:${col}"></i>${nm(pid)} <small>${people[pid] && people[pid].sex === 0 ? "♀" : "♂"}${Math.floor(age)}</small></span></td>
+      <td class="num">${f.money[s].toFixed(1)}¢</td>
+      <td><div class="bar" title="${Math.round(f.hunger[s] * 100)}% hungry"><i style="width:${Math.round(f.hunger[s] * 100)}%;background:${hcol}"></i></div></td>
+      <td class="foods"><b style="color:var(--grain)">${fd[0]}</b>·<b style="color:var(--fruit)">${fd[1]}</b>·<b style="color:var(--dairy)">${fd[2]}</b></td>
+      <td>${partner}</td><td>${st}</td></tr>`]);
+  }
+  rows.sort((a, b) => a[0] - b[0]);
+  $("ledger").innerHTML = rows.map((r) => r[1]).join("") || '<tr><td colspan="6">Everyone has died.</td></tr>';
+}
+function renderFamilies(step) {
+  const f = frameAt(step), seen = new Set(), items = [];
+  const isAlive = (pid) => slotOf(f, pid) >= 0;
+  const bornBy = (pid) => (people[pid] ? people[pid].born_step : 0) <= step;
+  for (let s = 0; s < f.pid.length; s++) {
+    if (!f.alive[s]) continue;
+    const pid = f.pid[s], p = f.partner[s];
+    const kids = (kidsOf[pid] || []).filter(bornBy);
+    if (p >= 0 && f.alive[p]) {
+      const q = f.pid[p], key = [pid, q].sort().join("-"); if (seen.has(key)) continue; seen.add(key);
+      const both = kids.filter((c) => people[c].mother === q || people[c].father === q);
+      items.push(`<li><b>${nm(pid)}</b> ♥ <b>${nm(q)}</b>${f.home[s] >= 0 ? " · home " + (f.home[s] + 1) : " · no home yet"}<div class="kids">${both.length ? "children: " + both.map((c) => first(c) + (isAlive(c) ? "" : " †")).join(", ") : "no children yet"}</div></li>`);
+    } else if (kids.some(isAlive)) {
+      items.push(`<li><b>${nm(pid)}</b><div class="kids">children: ${kids.map((c) => first(c) + (isAlive(c) ? "" : " †")).join(", ")}</div></li>`);
+    }
+  }
+  $("families").innerHTML = items.join("") || '<li class="kids">Nobody has paired up yet.</li>';
+}
+const QUIET = new Set(["talked", "courted", "ate grain", "ate fruit", "ate dairy"]);
+function renderFeed(step) {
+  const ev = [];
+  for (let k = rep.events.length - 1; k >= 0 && ev.length < 50; k--) { const e = rep.events[k]; if (e[0] <= step && !QUIET.has(e[1])) ev.push(e); }
+  $("feed").innerHTML = ev.length ? ev.map((e) => `<li class="${evClass(e[1])}" data-t="${e[0]}"><span class="t">y${(e[0] / YEAR()).toFixed(1)}</span><span>${evText(e)}</span></li>`).join("")
+    : '<li class="empty">Nothing has happened yet.</li>';
+}
+const TL = { theft: "--theft", detained: "--police", "citizens' arrest": "--police", partnered: "--love", born: "--love",
+  "died (starved)": "--accent", "died (malnutrition)": "--accent", "died (old age)": "--accent" };
+function drawTimeline() {
+  const c = $("tl"), r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const Wd = Math.max(1, Math.round(r.width * dpr)), Hd = Math.round(34 * dpr);
+  if (c.width !== Wd || c.height !== Hd) { c.width = Wd; c.height = Hd; }
+  const g = c.getContext("2d"), n = Math.max(1, nSteps());
+  g.clearRect(0, 0, Wd, Hd); g.fillStyle = cssVar("--surface-2"); g.fillRect(0, Hd * 0.3, Wd, Hd * 0.4);
+  const x = (s) => (s / n) * (Wd - 2) + 1;
+  const col = {}; ["--theft", "--police", "--love", "--accent", "--grain", "--dairy", "--muted"].forEach((v) => { col[v] = cssVar(v); });
+  g.fillStyle = col["--muted"];
+  for (let y = 1; y * YEAR() < n; y++) if (y % 5 === 0) g.fillRect(Math.round(x(y * YEAR())), Hd * 0.72, dpr, Hd * 0.28);
+  rep.events.forEach((e) => {
+    const k = e[1]; let c2 = TL[k], tall = !!c2;
+    if (!c2 && k.startsWith("bought ")) c2 = "--grain"; else if (!c2 && k.startsWith("harvested ")) c2 = "--dairy";
+    if (!c2) return;
+    g.fillStyle = col[c2]; g.fillRect(Math.round(x(e[0])), tall ? 0 : Hd * 0.3, Math.max(1, dpr), tall ? Hd * 0.7 : Hd * 0.4);
+  });
+  g.fillStyle = cssVar("--ink"); g.fillRect(Math.round(x(Math.min(t, n))) - dpr, 0, 2 * dpr, Hd);
+}
+function drawCharts() {
+  if (!index || !index.curve || !index.curve.length) { $("charts").innerHTML = '<p class="note">Training curves appear here once training has logged some eras.</p>'; return; }
+  const cv = index.curve.map((p) => ({ ...p, happy: p.person_steps ? 1000 * p.happiness / p.person_steps : 0,
+    harvests: (p.harvest_grain || 0) + (p.harvest_fruit || 0) + (p.harvest_dairy || 0) }));
+  const series = [["years", "Years the town lasted", "per era, out of 60"], ["population", "Population at the end", "people alive"],
+    ["births", "Births", "per era"], ["starved", "Starvation deaths", "per era"], ["malnourished", "Malnutrition deaths", "per era, from a diet missing a food"], ["harvests", "Harvests", "per era, all three foods"],
+    ["trades", "Food sales", "per era"], ["gifts_food", "Food given away", "per era"], ["thefts", "Thefts", "per era"],
+    ["detentions", "Arrests", "per era, police and citizens"], ["partnerships", "Partnerships", "per era"],
+    ["happy", "Happiness", "per person, per 1,000 steps"]].filter(([k]) => cv.some((p) => p[k] !== undefined));
+  const sel = index.stages[stageIdx] ? index.stages[stageIdx].it : null;
+  const Wc = 250, Hc = 110, L = 38, R = 12, T = 8, B = 20;
+  const xs = cv.map((p) => p.it), xmax = Math.max(1, ...xs);
+  const fmt = (v) => Math.abs(v) >= 100 ? Math.round(v) : Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1);
+  $("charts").innerHTML = series.map(([key, title, sub]) => {
+    const ys = cv.map((p) => p[key] || 0);
+    const lo = Math.min(0, ...ys), hi = Math.max(lo < 0 ? 1e-6 : 1, ...ys);
+    const X = (v) => L + (v / xmax) * (Wc - L - R), Y = (v) => T + (1 - (v - lo) / Math.max(1e-6, hi - lo)) * (Hc - T - B);
+    const pts = cv.map((p, k) => `${X(xs[k]).toFixed(1)},${Y(ys[k]).toFixed(1)}`).join(" ");
+    const base = Y(Math.max(lo, 0));
+    const area = `${X(xs[0]).toFixed(1)},${base} ${pts} ${X(xs[xs.length - 1]).toFixed(1)},${base}`;
+    const ticks = [lo, (lo + hi) / 2, hi].map((v) =>
+      `<line x1="${L}" x2="${Wc - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/>
+       <text x="${L - 5}" y="${Y(v) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${fmt(v)}</text>`).join("");
+    const mark = sel != null ? `<line x1="${X(sel)}" x2="${X(sel)}" y1="${T}" y2="${Hc - B}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 3"/>` : "";
+    return `<div class="chart"><h3>${title}</h3><p>${sub}</p><svg viewBox="0 0 ${Wc} ${Hc}" role="img" aria-label="${title} over training, latest ${fmt(ys[ys.length - 1])}">
+      ${ticks}<polygon points="${area}" fill="var(--accent)" fill-opacity="0.12"/>
+      <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${mark}
+      <circle cx="${X(xs[xs.length - 1])}" cy="${Y(ys[ys.length - 1])}" r="3.5" fill="var(--accent)"/>
+      <text x="${L}" y="${Hc - 5}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">it 0</text>
+      <text x="${Wc - R}" y="${Hc - 5}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">it ${xmax}</text></svg></div>`;
+  }).join("");
+  $("curve-note").textContent = "Each point averages the most recent finished eras at that training iteration. An era ends after 60 years or when everyone has died. The dashed line marks the stage being replayed." + (index.note ? " " + index.note : "");
+}
+
+// ------------------------------------------------------------------ main loop
+function resize() { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix(); }
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(0.1, clock.getDelta());
+  if (rep && bodies.length) {
+    const n = nSteps();
+    if (playing) { t += dt * speed; if (t >= n) { t = n; playing = false; $("play").textContent = "Replay"; } }
+    const step = Math.floor(t);
+    if (step !== lastStep) {
+      onStep(step, lastStep);
+      if (lastStep < 0 || Math.floor(step / 4) !== Math.floor(lastStep / 4)) { renderLedger(step); renderFamilies(step); renderFeed(step); }
+      $("clock").textContent = `step ${step} / ${n}`;
+      $("year").textContent = `Year ${(step / YEAR()).toFixed(1)}`;
+      lastStep = step;
+    }
+    updateBodies(dt); drawTimeline();
+    if (followPid >= 0) {
+      const s = slotOf(frameAt(step), followPid);
+      if (s >= 0) {
+        const p = bodies[s].root.position, off = camera.position.clone().sub(controls.target);
+        controls.target.lerp(p, Math.min(1, dt * 4)); camera.position.copy(controls.target).add(off);
+      }
+    }
+  }
+  flights = flights.filter((fl) => {
+    fl.t += dt; if (fl.t < 0) return true;
+    fl.obj.visible = true; const u = Math.min(1, fl.t / fl.dur);
+    fl.obj.position.lerpVectors(fl.from, fl.to, u); fl.obj.position.y += Math.sin(Math.PI * u) * 1.1; fl.obj.rotation.y += dt * 12;
+    if (u >= 1) { scene.remove(fl.obj); return false; } return true;
+  });
+  floaters = floaters.filter((fl) => {
+    fl.t += dt; const u = fl.t / fl.dur; fl.sp.position.y += dt * 0.6; fl.sp.material.opacity = Math.max(0, 1 - u * u);
+    if (u >= 1) { scene.remove(fl.sp); fl.sp.material.map.dispose(); fl.sp.material.dispose(); return false; } return true;
+  });
+  clouds.forEach((c, k) => { c.position.x += dt * (0.15 + k * 0.03); if (c.position.x > 34) c.position.x = -34; });
+  controls.update(); renderer.render(scene, camera); requestAnimationFrame(frame);
+}
+async function selectStage(k) {
+  stageIdx = k;
+  document.querySelectorAll(".chip").forEach((c, i) => c.setAttribute("aria-pressed", i === k ? "true" : "false"));
+  const s = index.stages[k];
+  rep = await (await fetch("v2/replays/" + s.file)).json();
+  nameAll();
+  if (!cfg) buildTown(rep.config);
+  while (bodies.length < rep.config.slots) bodies.push(makeBody());
+  bodies.forEach((b) => { b.root.visible = false; b.pid = -1; b.dying = 0; });
+  flights.forEach((fl) => scene.remove(fl.obj)); floaters.forEach((fl) => scene.remove(fl.sp)); flights = []; floaters = [];
+  t = 0; lastStep = -1; followPid = -1; $("follow").hidden = true;
+  const m = rep.summary, years = nSteps() / YEAR();
+  const lastFrame = rep.frames[rep.frames.length - 1], alive = lastFrame.alive.filter(Boolean).length;
+  $("summary").innerHTML = [["years shown", years.toFixed(0)], ["alive at the end", alive], ["births", m.births], ["starved", m.starved], ["malnourished", m.malnourished ?? 0],
+    ["food sales", m.trades], ["food shared", m.gifts_food], ["thefts", m.thefts], ["arrests", m.detentions], ["partnerships", m.partnerships]]
+    .map(([a, v]) => `<span>${a} <b>${typeof v === "number" ? Math.round(v) : v}</b></span>`).join("") +
+    `<span>stage <b>${s.it === 0 ? "untrained" : "it " + s.it}</b> · ${(s.samples / 1e6).toFixed(1)} M person-steps of practice</span>`;
+  drawCharts();
+}
+async function boot() {
+  resize();
+  try { index = await (await fetch("v2/replays/index.json")).json(); }
+  catch (err) { $("loading").innerHTML = '<span class="error">No replays found next to this page (v2/replays/index.json).</span>'; return; }
+  await Promise.all([
+    loadModel("character", "assets/arena/character-soldier.glb"), loadModel("block", "assets/arena/block.glb"),
+    loadModel("banner", "assets/arena/banner.glb"), loadModel("tree", "assets/arena/tree.glb"),
+    loadModel("garage", "assets/city/building-garage.glb"), loadModel("house-a", "assets/city/building-small-a.glb"),
+    loadModel("house-b", "assets/city/building-small-b.glb"), loadModel("house-c", "assets/city/building-small-c.glb"),
+    loadModel("house-d", "assets/city/building-small-d.glb"), loadModel("pavement", "assets/city/pavement.glb"),
+    loadModel("fountain", "assets/city/pavement-fountain.glb"), loadModel("trees-tall", "assets/city/grass-trees-tall.glb"),
+    loadModel("road", "assets/city/road-straight-lightposts.glb"), loadModel("coin", "assets/platformer/coin.glb"),
+    loadModel("flag", "assets/platformer/flag.glb"), loadModel("sprout", "assets/platformer/grass-small.glb"),
+    loadModel("cloud", "assets/platformer/cloud.glb"), loadModel("wall", "assets/fps/wall-low.glb")]);
+  index.stages.forEach((s, k) => {
+    const b = document.createElement("button"); b.className = "chip"; b.type = "button";
+    b.textContent = s.it === 0 ? "untrained" : `it ${s.it}`; b.title = `${(s.samples / 1e6).toFixed(1)} M person-steps of practice`;
+    b.addEventListener("click", () => selectStage(k)); $("stages").appendChild(b);
+  });
+  const q = new URLSearchParams(location.search);          // ?stage=2&t=600 opens a given stage and moment
+  await selectStage(q.has("stage") ? Math.min(index.stages.length - 1, +q.get("stage")) : index.stages.length - 1);
+  if (q.has("t")) t = Math.min(nSteps(), +q.get("t"));
+  $("loading").hidden = true;
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) { playing = true; $("play").textContent = "Pause"; }
+  frame();
+}
+$("play").addEventListener("click", () => { if (!rep) return; if (t >= nSteps()) { t = 0; lastStep = -1; } playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
+$("speed").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; speed = +b.dataset.s;
+  document.querySelectorAll("#speed button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false")); });
+$("tl").addEventListener("click", (e) => { if (!rep) return; const r = $("tl").getBoundingClientRect(); t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * nSteps(); lastStep = -1; });
+$("feed").addEventListener("click", (e) => { const li = e.target.closest("li[data-t]"); if (li) { t = +li.dataset.t; lastStep = -1; } });
+$("ledger").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-pid]"); if (!tr) return; const pid = +tr.dataset.pid;
+  followPid = pid === followPid ? -1 : pid; $("follow").hidden = followPid < 0; lastStep = -1; });
+$("follow").addEventListener("click", () => { followPid = -1; $("follow").hidden = true; lastStep = -1; });
+window.addEventListener("resize", resize); new ResizeObserver(resize).observe(view);
+new MutationObserver(() => { lastStep = -1; }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+boot();
+</script>
+</body>
+</html>
