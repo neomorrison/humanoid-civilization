@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -24,6 +25,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", default=None)
     ap.add_argument("--init-from", default=None, help="warm start from a checkpoint trained on a different layout")
+    ap.add_argument("--layout", default=None, help="json of obs/cobs/act names, for checkpoints saved without them")
     args = ap.parse_args()
     cfg = TownConfig()
     env = Town(args.worlds, cfg, seed=args.seed)
@@ -40,7 +42,8 @@ def main():
               f"thefts={s['thefts']:.0f}", flush=True)
 
     train(env, args.out, args.minutes, MAPPOConfig(hidden=(256, 256), gamma=0.995, horizon=64, entropy_coef=0.015),
-          seed=args.seed, every=args.every, on_snapshot=on_snapshot, resume=args.resume, init_from=args.init_from)
+          seed=args.seed, every=args.every, on_snapshot=on_snapshot, resume=args.resume, init_from=args.init_from,
+          names_if_missing=json.load(open(args.layout)) if args.layout else None)
 
 
 if __name__ == "__main__":
