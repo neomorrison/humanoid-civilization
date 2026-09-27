@@ -64,15 +64,16 @@ def make_update(cfg):
         logp = jnp.take_along_axis(logp_all, b["act"][:, None], 1)[:, 0]
         ratio = jnp.exp(logp - b["logp"])
         adv = b["adv"]
-        w = b["mask"]
+        w, wd = b["mask"], b["dmask"]
         wm = lambda x: (x * w).sum() / jnp.maximum(w.sum(), 1.0)      # mean over living agents only
-        pg = -wm(jnp.minimum(ratio * adv, jnp.clip(ratio, 1 - cfg.clip, 1 + cfg.clip) * adv))
+        dm = lambda x: (x * wd).sum() / jnp.maximum(wd.sum(), 1.0)    # mean over steps where they chose
+        pg = -dm(jnp.minimum(ratio * adv, jnp.clip(ratio, 1 - cfg.clip, 1 + cfg.clip) * adv))
         v = mlp(params["critic"], b["cobs"])[:, 0]
         vl = wm((v - b["ret"]) ** 2)
         p = jnp.exp(logp_all)
-        ent = wm(-(p * logp_all).sum(-1))
+        ent = dm(-(p * logp_all).sum(-1))
         old = jax.nn.log_softmax(b["logits"])
-        kl = wm((jnp.exp(old) * (old - logp_all)).sum(-1))
+        kl = dm((jnp.exp(old) * (old - logp_all)).sum(-1))
         return pg + cfg.value_coef * vl - cfg.entropy_coef * ent, dict(pg=pg, vl=vl, ent=ent, kl=kl)
 
     @jax.jit
@@ -147,8 +148,10 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
     buf = dict(obs=np.zeros((T, N, env.obs_dim), np.float32), cobs=np.zeros((T, N, env.cobs_dim), np.float32),
                act=np.zeros((T, N), np.int32), logp=np.zeros((T, N), np.float32), val=np.zeros((T, N), np.float32),
                rew=np.zeros((T, N), np.float32), done=np.zeros((T, N), np.float32),
-               logits=np.zeros((T, N, env.act_dim), np.float32), mask=np.ones((T, N), np.float32))
+               logits=np.zeros((T, N, env.act_dim), np.float32), mask=np.ones((T, N), np.float32),
+               dmask=np.ones((T, N), np.float32))
     alive_mask = getattr(env, "alive_mask", None)
+    decision_mask = getattr(env, "decision_mask", None)     # steps where the agent actually chose its action
     log_path = os.path.join(out, "train_log.jsonl")
     t0 = time.time()
     samples = 0
@@ -176,6 +179,7 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
             buf["logp"][t], buf["val"][t], buf["logits"][t] = np.asarray(logp), np.asarray(v), np.asarray(lg)
             if alive_mask is not None:
                 buf["mask"][t] = alive_mask()
+            buf["dmask"][t] = decision_mask() if decision_mask is not None else buf["mask"][t]
             obs, cobs, rew, done, info = env.step(a)
             rew = rew + cfg.gamma * buf["val"][t] * info["timeout"]
             buf["rew"][t], buf["done"][t] = rew, done
@@ -185,7 +189,7 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
         samples += T * N
         last = np.asarray(value(params, cnorm(cobs)))
         adv, ret = gae(buf["rew"], buf["val"], buf["done"], last, cfg.gamma, cfg.lam)
-        live = buf["mask"] > 0
+        live = buf["dmask"] > 0
         adv = (adv - adv[live].mean()) / (adv[live].std() + 1e-8)
         flat = {k: v.reshape(T * N, *v.shape[2:]) for k, v in buf.items()}
         flat["adv"], flat["ret"] = adv.reshape(-1), ret.reshape(-1)
@@ -195,7 +199,7 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
             perm = np.random.permutation(T * N)
             for j in range(cfg.minibatches):
                 ix = perm[j * mb:(j + 1) * mb]
-                b = {k: flat[k][ix] for k in ["obs", "cobs", "act", "logp", "adv", "ret", "logits", "mask"]}
+                b = {k: flat[k][ix] for k in ["obs", "cobs", "act", "logp", "adv", "ret", "logits", "mask", "dmask"]}
                 params, opt_state, st = update(params, opt_state, b)
                 stats.append({k: float(v) for k, v in st.items()})
         it += 1

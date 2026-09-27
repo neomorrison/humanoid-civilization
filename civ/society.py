@@ -87,6 +87,7 @@ class SocietyConfig:
     deficiency_damage: float = 0.003   # per missing nutrient; a deficient body cannot heal
     heal_rate: float = 0.004
     shelter_heal: float = 1.5          # extra healing while resting at your own home
+    intent_patience: int = 30         # give up an errand that has not arrived after this many steps
     cohabit_window: int = 30           # partners who both slept at home within about half a year live together
     adult_age: float = 16.0
     child_age: float = 12.0
@@ -177,6 +178,8 @@ class Society:
         self.partner = np.full((M, S), -1)
         self.home = np.full((M, S), -1)
         self.home_seen = np.full((M, S), 999)   # steps since last at own home
+        self.intent = np.full((M, S), -1)       # the intention being carried out (action id), -1 when deciding
+        self.intent_t = np.zeros((M, S), int)
         self.enlisted = z(S, dt=bool)
         self.detained = z(S, dt=int)
         self.traits = z(S, 4)                     # empathy, greed, boldness, charm
@@ -212,6 +215,7 @@ class Society:
         self.partner[m, s] = -1
         self.home[m, s] = -1
         self.home_seen[m, s] = 999
+        self.intent[m, s] = -1
         self.enlisted[m, s] = False
         self.detained[m, s] = 0
         self.traits[m, s] = np.clip(traits, 0, 1)
@@ -312,6 +316,7 @@ class Society:
             nkids[:, s] = kids.sum(1)
             ya = np.where(kids, self.age, 1e9)
             young[:, s] = np.where(kids.any(1), ya.argmin(1), -1)
+        self._young = young                         # reused by the go_child intention
         own = np.concatenate([np.stack([
             self.sex.astype(float), self.age / 70.0, (self.age < c.child_age) * 1.0, self.hunger, self.health,
             np.minimum(self.money, 100) / 50, self.carry * 1.0, self.pregnant / c.gestation,
@@ -369,7 +374,8 @@ class Society:
                             (self.food.sum(-1) * self.alive).sum(1, keepdims=True) / 40,
                             np.minimum((self.money * self.alive).sum(1, keepdims=True), 500) / 250,
                             (self.pregnant > 0).sum(1, keepdims=True) / 4, (self.t / self.max_steps)[:, None]], -1)
-        cobs = np.concatenate([obs, np.broadcast_to(g[:, None], (M, S, g.shape[1]))], -1).astype(np.float32)
+        doing = (self.intent[..., None] == np.arange(10, 10 + len(INTENTS))) * 1.0
+        cobs = np.concatenate([obs, doing, np.broadcast_to(g[:, None], (M, S, g.shape[1]))], -1).astype(np.float32)
         return obs.reshape(self.N, -1), cobs.reshape(self.N, -1), self.alive.reshape(-1).copy()
 
     def observe_all(self):
@@ -378,6 +384,10 @@ class Society:
 
     def alive_mask(self):
         return self.alive.reshape(-1).astype(np.float32)
+
+    def decision_mask(self):
+        """Who is choosing this step: alive and not in the middle of carrying out an intention."""
+        return (self.alive & (self.intent < 0)).reshape(-1).astype(np.float32)
 
     def _intentions(self, a):
         """One step toward each intention's target; which work intentions have arrived."""
@@ -413,10 +423,7 @@ class Society:
         put(16, self._rel(c.market).astype(int), np.ones((M, S), bool))
         pa = np.clip(self.partner, 0, S - 1)
         put(17, self.pos[ar, pa] - self.pos, (self.partner >= 0) & self.alive[ar, pa])
-        young = np.full((M, S), -1)
-        for s_ in range(S):
-            kids = self._kids(s_)
-            young[:, s_] = np.where(kids.any(1), np.where(kids, self.age, 1e9).argmin(1), -1)
+        young = self._young
         yk = np.clip(young, 0, S - 1)
         put(18, self.pos[ar, yk] - self.pos, young >= 0)
         put(19, self._rel(c.station).astype(int), np.ones((M, S), bool))
@@ -424,7 +431,7 @@ class Society:
         dx, dy = rel[..., 0], rel[..., 1]
         horiz = np.abs(dx) >= np.abs(dy)
         step_vec = np.stack([np.where(horiz, np.sign(dx), 0), np.where(horiz, 0, np.sign(dy))], -1) * has[..., None]
-        return step_vec.astype(int), work & at
+        return step_vec.astype(int), work & at, has, at
 
     # ------------------------------------------------------------------- step
     def step(self, actions):
@@ -441,7 +448,14 @@ class Society:
         base_ok = np.isin(a, [0, 1, 2, 3, 4, 6, 15, 16])          # children can also walk home or to the market
         talk_ok = (a >= N_BASE) & (((a - N_BASE) % N_PER) == TALK)
         a = np.where(child & ~(base_ok | talk_ok), 0, a)
-        step_vec, arrived_work = self._intentions(a)
+        # someone carrying out an intention keeps at it until it is done; only then do they choose again
+        committed = (self.intent >= 0) & self.alive
+        a = np.where(committed, self.intent, a)
+        step_vec, arrived_work, has, at = self._intentions(a)
+        is_intent = (a >= 10) & (a < N_BASE)
+        self.intent_t = np.where(committed, self.intent_t + 1, 0)
+        keep = is_intent & has & ~at & (self.intent_t < c.intent_patience)
+        self.intent = np.where(keep, a, -1)
         a = np.where(arrived_work, 5, a)                           # at the work site: do the work
         # movement (children and the starving move every other step)
         slow = (child | (self.hunger >= 1)) & ((self.t[:, None] % 2) == 1)
@@ -705,6 +719,7 @@ class Society:
                 for x in takers:
                     self.money[m, x] += amt / len(takers)
                 self.detained[m, j] = c.detain_steps
+                self.intent[m, j] = -1
                 self.pos[m, j] = [c.station[0], c.station[1]]
                 self.carry[m, j] = False
                 self.saw_theft[m, :, j] = 0
