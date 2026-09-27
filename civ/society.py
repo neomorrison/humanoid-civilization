@@ -101,6 +101,10 @@ class SocietyConfig:
     attract_threshold: float = 0.45
     conceive_prob: float = 0.015     # per step that fed, fertile partners spend together
     gestation: int = 45
+    nursing_age: float = 2.0         # infants nurse from their mother when they are together
+    nurse_relief: float = 0.02
+    nurse_nutrient: float = 0.01
+    nurse_cost: float = 0.006        # extra hunger for the nursing mother
     fertile_ages: tuple = (18.0, 45.0)
     mutation: float = 0.08
     # happiness weights
@@ -256,6 +260,14 @@ class Society:
         pi, pj = self.pid[m, i], self.pid[m, j]
         mi, fi, mj, fj = self.mother[m, i], self.father[m, i], self.mother[m, j], self.father[m, j]
         return (mi == pj or fi == pj or mj == pi or fj == pi or (mi > 0 and mi == mj) or (fi > 0 and fi == fj))
+
+    def _parent_slots(self):
+        """Slot of each person's living mother and father (-1 if none)."""
+        out = []
+        for who in (self.mother, self.father):
+            eq = (self.pid[:, None, :] == who[:, :, None]) & self.alive[:, None, :] & (who[:, :, None] > 0)
+            out.append(np.where(eq.any(-1), eq.argmax(-1), -1))
+        return out
 
     def at_home(self):
         """Who is standing inside their own home (M, S)."""
@@ -423,7 +435,13 @@ class Society:
         put(15, hr, self.home >= 0)
         put(16, self._rel(c.market).astype(int), np.ones((M, S), bool))
         pa = np.clip(self.partner, 0, S - 1)
-        put(17, self.pos[ar, pa] - self.pos, (self.partner >= 0) & self.alive[ar, pa])
+        # adults go to their partner; children go to their mother (or father)
+        mom, dad = self._parent_slots()
+        par = np.where(mom >= 0, mom, dad)
+        kid = self.age < c.adult_age
+        tgt = np.where(kid, np.clip(par, 0, S - 1), pa)
+        ok = np.where(kid, par >= 0, (self.partner >= 0) & self.alive[ar, pa])
+        put(17, self.pos[ar, tgt] - self.pos, ok)
         young = self._young
         yk = np.clip(young, 0, S - 1)
         put(18, self.pos[ar, yk] - self.pos, young >= 0)
@@ -446,7 +464,7 @@ class Society:
         adult = self.age >= c.adult_age
         free = self.alive & (self.detained == 0)
         a = np.where(free, a, 0)
-        base_ok = np.isin(a, [0, 1, 2, 3, 4, 6, 15, 16])          # children can also walk home or to the market
+        base_ok = np.isin(a, [0, 1, 2, 3, 4, 6, 15, 16, 17])      # children can also walk home, to the market or to a parent
         talk_ok = (a >= N_BASE) & (((a - N_BASE) % N_PER) == TALK)
         a = np.where(child & ~(base_ok | talk_ok), 0, a)
         # someone carrying out an intention keeps at it until it is done; only then do they choose again
@@ -760,6 +778,18 @@ class Society:
                                np.where((self.hunger < 0.5) & (missing == 0), np.minimum(1, self.health + heal), self.health))
         self.health = self.health - c.deficiency_damage * missing
         self.age += al / YEAR
+        # infants nurse when they are with their fed mother
+        mom, _ = self._parent_slots()
+        ar = np.arange(M)[:, None]
+        mm = np.clip(mom, 0, S - 1)
+        nursing = al & (self.age < c.nursing_age) & (mom >= 0) & (np.abs(self.pos[ar, mm] - self.pos).max(-1) <= 1) \
+            & (self.hunger[ar, mm] < 0.8)
+        if nursing.any():
+            self.hunger = np.where(nursing, np.maximum(0, self.hunger - c.nurse_relief), self.hunger)
+            self.nutr = np.where(nursing[..., None], np.minimum(1, self.nutr + c.nurse_nutrient), self.nutr)
+            cost = np.zeros((M, S))
+            np.add.at(cost, (np.nonzero(nursing)[0], mm[nursing]), c.nurse_cost)
+            self.hunger = np.minimum(1, self.hunger + cost)
         spoil = (self.food > 0) & (r.random((M, S, 3)) < self.food / c.spoil_steps)
         self.food -= spoil
         p_old = np.where(self.age > c.old_age, ((self.age - c.old_age) / 30.0) ** 2 * 0.004, 0)

@@ -30,12 +30,12 @@ HEAD = """<!doctype html>
 """
 
 
-def build_replays(run, out_dir, max_stages):
+def build_replays(run, out_dir, max_stages, sub="replays"):
     """Copy a spread of replay snapshots and write index.json with the training curve."""
     os.makedirs(out_dir, exist_ok=True)
     for old in glob.glob(os.path.join(out_dir, "replay_it*.json")):
         os.remove(old)
-    files = sorted(glob.glob(os.path.join(run, "replays", "replay_it*.json")),
+    files = sorted(glob.glob(os.path.join(run, sub, "replay_it*.json")),
                    key=lambda p: int(re.findall(r"it(\d+)", p)[0]))
     if len(files) > max_stages:
         keep = np.unique(np.linspace(0, len(files) - 1, max_stages).round().astype(int))
@@ -68,9 +68,10 @@ def main():
     ap.add_argument("--v1", default=None, help="economy v1 run to keep at economy.html")
     ap.add_argument("--out", default="site")
     ap.add_argument("--max-stages", type=int, default=10)
+    ap.add_argument("--replays", default="replays", help="replay folder inside --run (e.g. replays60)")
     args = ap.parse_args()
     v3 = os.path.join(HERE, "..", "viewer3d")
-    ns, nc = build_replays(args.run, os.path.join(args.out, "replays"), args.max_stages)
+    ns, nc = build_replays(args.run, os.path.join(args.out, "replays"), args.max_stages, args.replays)
     shutil.copy(os.path.join(v3, "index.html"), os.path.join(args.out, "index.html"))
     shutil.copy(os.path.join(v3, "CREDITS.md"), os.path.join(args.out, "CREDITS.md"))
     for sub in ("assets", "vendor"):

@@ -28,7 +28,7 @@ def main():
     os.makedirs(os.path.join(args.out, "replays"), exist_ok=True)
 
     def on_snapshot(path, it, samples):
-        rec = record(path, cfg, seed=7, years=20)
+        rec = record(path, cfg, seed=7, years=60, stride=3)
         save(rec, os.path.join(args.out, "replays", f"replay_it{it:05d}.json"))
         s = rec["summary"]
         print(f"[replay it={it}] years={len(rec['frames']) * rec['stride'] / 60:.1f} births={s['births']:.0f} "
