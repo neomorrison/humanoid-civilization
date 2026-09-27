@@ -69,6 +69,8 @@ class TownConfig:
     houses: tuple = ((1, 20, 2, 21), (5, 20, 6, 21), (1, 16, 2, 17), (5, 16, 6, 17), (1, 13, 2, 14), (5, 13, 6, 14),
                      (16, 20, 17, 21), (19, 20, 20, 21), (24, 20, 25, 21), (28, 20, 29, 21), (28, 14, 29, 15))
     house_beds: int = 4
+    positions: tuple = (0, 4, 4, 4, 3, 3)   # jobs each business offers (none, farm, orchard, dairy, warehouse, canteen)
+    job_tenure: int = 96               # hours before someone hired can change jobs again (a year)
     places: dict = field(default_factory=lambda: {
         "farm": (11, 1, 20, 9), "orchard": (24, 6, 30, 9), "dairy": (24, 0, 30, 4), "warehouse": (1, 5, 7, 9),
         "canteen": (16, 13, 20, 16), "market": (11, 13, 14, 16), "school": (10, 20, 14, 22), "station": (24, 13, 26, 16)})
@@ -148,7 +150,7 @@ class TownConfig:
     w_health: float = 0.03
     w_craving: float = 0.02
     crave_level: float = 0.5
-    w_tired: float = 0.04
+    w_tired: float = 0.05
     w_robbed: float = 0.5              # once
     w_detained: float = 0.02
     w_friends: float = 0.004
@@ -241,6 +243,7 @@ class Town:
         self.court = z(S, S, dt=int)
         self.shun = z(S, S, dt=bool)
         self.shift_pay = z(S)
+        self.hired_t = np.full((M, S), 10_000)
         self.docked_now = z(S, dt=bool)
         self.act = z(S, dt=int)
         self.stock = z(3)
@@ -275,6 +278,7 @@ class Town:
         self.enlisted[m, s] = False
         self.detained[m, s] = 0
         self.shift_pay[m, s] = 0
+        self.hired_t[m, s] = 10_000
         self.traits[m, s] = np.clip(traits, 0, 1)
         self.pid[m, s] = self.next_pid
         self.next_pid += 1
@@ -411,6 +415,8 @@ class Town:
         workday = self.shift_on.any(1)[self.job, season[:, None]]
         open_, _ = self.canteen_open()
         prices = self.canteen_price()
+        staff_n = np.stack([((self.job == k) & self.alive).sum(1) for k in range(1, len(JOBS))], -1)
+        vacancies = np.clip(np.array(c.positions[1:]) - staff_n, 0, None) / 4.0
         school_now = (hour >= c.school_hours[0]) & (hour < c.school_hours[1]) & (season < 3)
         at_home, at_work = self.at_home(), self.at_work()
         places = np.stack([_in(self.pos, c.places[p]) for p in ("canteen", "market", "school", "station")], -1)
@@ -429,7 +435,8 @@ class Town:
             places * 1.0, np.eye(len(JOBS))[self.job], self.food / 3.0, self.nutr, self.traits,
             np.broadcast_to(timef[:, None], (M, S, 3)), np.broadcast_to(seasonf[:, None], (M, S, 4)),
             np.broadcast_to(np.concatenate([open_[:, None] * 1.0, school_now[:, None] * 1.0, prices / 5,
-                                            np.minimum(self.stock, 60) / 30], -1)[:, None], (M, S, 8))], -1)
+                                            np.minimum(self.stock, 60) / 30, vacancies], -1)[:, None], (M, S, 13)),
+            np.minimum(self.hired_t, c.job_tenure)[..., None] / c.job_tenure], -1)
         hb = self.hbox[np.clip(self.home, 0, self.H - 1)]
         rels = [np.where((self.home >= 0)[..., None], self._rel_box(hb), 0),
                 np.where((self.job > 0)[..., None], self._rel_box(self.job_box[self.job]), 0),
@@ -623,9 +630,11 @@ class Town:
                 self.intent[m, s] = -1
             elif it >= APPLY0:
                 k = it - APPLY0 + 1
-                if adult[m, s] and self.job[m, s] != k:
+                staff_k = ((self.job[m] == k) & self.alive[m]).sum()
+                if adult[m, s] and self.job[m, s] != k and self.hired_t[m, s] >= c.job_tenure and staff_k < c.positions[k]:
                     self.job[m, s] = k
                     self.shift_pay[m, s] = 0
+                    self.hired_t[m, s] = 0
                     self.ep["hires"][m] += 1
                     if ev is not None:
                         ev.append((m, "hired", s, -1, k))
@@ -716,6 +725,7 @@ class Town:
         self.edu = np.where(pupils, np.minimum(1.0, self.edu + c.edu_gain), self.edu)
         rew += c.w_purpose * pupils
         self.ep["school_hours"] += pupils.sum(1)
+        self.hired_t += 1
         # an errand that has not arrived in time is given up
         self.intent_t = np.where(self.intent >= 0, self.intent_t + 1, 0)
         stuck = (self.intent >= 0) & ~self.asleep & (self.intent_t > c.intent_patience)
@@ -730,7 +740,7 @@ class Town:
         rew -= c.w_starving * (self.hunger >= 1) * al
         rew -= c.w_health * (1 - self.health) * al
         rew -= c.w_craving * craving * al
-        rew -= c.w_tired * (1 - self.energy) ** 2 * al
+        rew -= c.w_tired * (np.clip(0.5 - self.energy, 0, 0.5) / 0.5) ** 2 * al    # tiredness bites when energy runs low
         rew -= c.w_detained * (self.detained > 0) * (1 - 0.5 * self.traits[..., 2]) * al
         mutual = (self.opinion > 0.3) & (np.transpose(self.opinion, (0, 2, 1)) > 0.3) & al[:, None, :]
         rew += c.w_friends * np.minimum(mutual.sum(2), 5) * (0.5 + self.traits[..., 0]) * al
