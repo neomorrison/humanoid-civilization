@@ -64,13 +64,15 @@ def make_update(cfg):
         logp = jnp.take_along_axis(logp_all, b["act"][:, None], 1)[:, 0]
         ratio = jnp.exp(logp - b["logp"])
         adv = b["adv"]
-        pg = -jnp.minimum(ratio * adv, jnp.clip(ratio, 1 - cfg.clip, 1 + cfg.clip) * adv).mean()
+        w = b["mask"]
+        wm = lambda x: (x * w).sum() / jnp.maximum(w.sum(), 1.0)      # mean over living agents only
+        pg = -wm(jnp.minimum(ratio * adv, jnp.clip(ratio, 1 - cfg.clip, 1 + cfg.clip) * adv))
         v = mlp(params["critic"], b["cobs"])[:, 0]
-        vl = ((v - b["ret"]) ** 2).mean()
+        vl = wm((v - b["ret"]) ** 2)
         p = jnp.exp(logp_all)
-        ent = -(p * logp_all).sum(-1).mean()
+        ent = wm(-(p * logp_all).sum(-1))
         old = jax.nn.log_softmax(b["logits"])
-        kl = (jnp.exp(old) * (old - logp_all)).sum(-1).mean()
+        kl = wm((jnp.exp(old) * (old - logp_all)).sum(-1))
         return pg + cfg.value_coef * vl - cfg.entropy_coef * ent, dict(pg=pg, vl=vl, ent=ent, kl=kl)
 
     @jax.jit
@@ -145,7 +147,8 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
     buf = dict(obs=np.zeros((T, N, env.obs_dim), np.float32), cobs=np.zeros((T, N, env.cobs_dim), np.float32),
                act=np.zeros((T, N), np.int32), logp=np.zeros((T, N), np.float32), val=np.zeros((T, N), np.float32),
                rew=np.zeros((T, N), np.float32), done=np.zeros((T, N), np.float32),
-               logits=np.zeros((T, N, env.act_dim), np.float32))
+               logits=np.zeros((T, N, env.act_dim), np.float32), mask=np.ones((T, N), np.float32))
+    alive_mask = getattr(env, "alive_mask", None)
     log_path = os.path.join(out, "train_log.jsonl")
     t0 = time.time()
     samples = 0
@@ -171,16 +174,19 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
             a = np.asarray(a)
             buf["obs"][t], buf["cobs"][t], buf["act"][t] = on, cn, a
             buf["logp"][t], buf["val"][t], buf["logits"][t] = np.asarray(logp), np.asarray(v), np.asarray(lg)
+            if alive_mask is not None:
+                buf["mask"][t] = alive_mask()
             obs, cobs, rew, done, info = env.step(a)
             rew = rew + cfg.gamma * buf["val"][t] * info["timeout"]
             buf["rew"][t], buf["done"][t] = rew, done
-            rsum += float(rew.mean())
+            rsum += float((rew * buf["mask"][t]).sum() / max(buf["mask"][t].sum(), 1))
             onorm.update(obs)
             cnorm.update(cobs)
         samples += T * N
         last = np.asarray(value(params, cnorm(cobs)))
         adv, ret = gae(buf["rew"], buf["val"], buf["done"], last, cfg.gamma, cfg.lam)
-        adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+        live = buf["mask"] > 0
+        adv = (adv - adv[live].mean()) / (adv[live].std() + 1e-8)
         flat = {k: v.reshape(T * N, *v.shape[2:]) for k, v in buf.items()}
         flat["adv"], flat["ret"] = adv.reshape(-1), ret.reshape(-1)
         mb = T * N // cfg.minibatches
@@ -189,22 +195,23 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
             perm = np.random.permutation(T * N)
             for j in range(cfg.minibatches):
                 ix = perm[j * mb:(j + 1) * mb]
-                b = {k: flat[k][ix] for k in ["obs", "cobs", "act", "logp", "adv", "ret", "logits"]}
+                b = {k: flat[k][ix] for k in ["obs", "cobs", "act", "logp", "adv", "ret", "logits", "mask"]}
                 params, opt_state, st = update(params, opt_state, b)
                 stats.append({k: float(v) for k, v in st.items()})
         it += 1
         recent = env.stats[-64:]
-        econ = {k: float(np.mean([s[k] for s in recent])) for k in recent[0]} if recent else {}
+        econ = {k: float(np.mean([s[k] for s in recent])) for k in recent[0]
+                if not isinstance(recent[0][k], list)} if recent else {}
         rec = dict(it=it, minutes=(time.time() - t0) / 60, samples=samples, sps=T * N / (time.time() - t_it),
                    reward=rsum / T, entropy=float(np.mean([s["ent"] for s in stats])),
                    kl=float(np.mean([s["kl"] for s in stats])), econ=econ)
         with open(log_path, "a") as f:
             f.write(json.dumps(rec) + "\n")
         if it % 10 == 0:
-            e = econ
-            print(f"it={it} t={rec['minutes']:.1f}m sps={rec['sps']:.0f} r={rec['reward']:+.4f} ent={rec['entropy']:.2f} "
-                  + (f"boxes={e['boxes']:.1f} sold={e['food_sold']:.1f} thefts={e['thefts']:.1f} "
-                     f"arrests={e['arrests']:.1f} starving={e['starving']:.0f}" if e else ""), flush=True)
+            e = {k: v for k, v in econ.items() if isinstance(v, float)}
+            show = " ".join(f"{k}={v:.1f}" for k, v in list(e.items())[:12])
+            print(f"it={it} t={rec['minutes']:.1f}m sps={rec['sps']:.0f} r={rec['reward']:+.4f} "
+                  f"ent={rec['entropy']:.2f} {show}", flush=True)
         if it % every == 0:
             snapshot()
     snapshot()

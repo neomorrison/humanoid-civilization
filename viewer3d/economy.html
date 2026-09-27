@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Humanoid Civilization v1 Economy</title>
+<meta name="description" content="Learning agents build a small economy by choice: warehouse jobs, farming, hand-to-hand trade, theft and policing. Watch them in 3D.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three/three.module.min.js",
+    "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #eef1ee; --surface: #ffffff; --surface-2: #e6eae6; --ink: #1d2a30; --muted: #5d6b70;
+  --line: #d3d9d5; --grid: #e3e8e4; --accent: #1f6f78; --accent-ink: #ffffff;
+  --worker: #c98a00; --farmer: #3c8a46; --police: #2d5da6; --theft: #c2413a;
+  --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #11171a; --surface: #172026; --surface-2: #1f2a31; --ink: #e3eaec; --muted: #93a3a9;
+    --line: #2b3942; --grid: #1d2830; --accent: #3aa3ad; --accent-ink: #0c1417;
+    --worker: #e6a91c; --farmer: #5cb467; --police: #5b8ae0; --theft: #ec6a61;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #11171a; --surface: #172026; --surface-2: #1f2a31; --ink: #e3eaec; --muted: #93a3a9;
+  --line: #2b3942; --grid: #1d2830; --accent: #3aa3ad; --accent-ink: #0c1417;
+  --worker: #e6a91c; --farmer: #5cb467; --police: #5b8ae0; --theft: #ec6a61;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+.app { max-width: 1320px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 16px; }
+h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+.lede { color: var(--muted); max-width: 72ch; margin: 4px 0 0; }
+.lede a { color: var(--accent); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+header { display: grid; gap: 12px; }
+.stages { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.stages .label { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.chip { font: 500 12px var(--mono); border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.summary { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.summary b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+.stage { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.viewwrap { padding: 10px; display: grid; gap: 10px; }
+.view { position: relative; width: 100%; aspect-ratio: 16 / 10; max-width: 100%; border-radius: 6px; overflow: hidden; background: #cfe6f2; }
+.view canvas { display: block; width: 100%; height: 100%; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; color: #26414a; background: #cfe6f2; }
+.hint { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #27404a; background: rgba(255,255,255,0.7);
+  padding: 2px 7px; border-radius: 4px; pointer-events: none; }
+.follow { position: absolute; right: 10px; top: 10px; font: 600 12px var(--font); background: rgba(255,255,255,0.85);
+  color: #1d2a30; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+button.ctl { font: 600 13px var(--font); background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
+  padding: 7px 14px; cursor: pointer; min-width: 74px; }
+.speed { display: flex; gap: 4px; }
+.speed button { font: 500 12px var(--mono); border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 6px; padding: 5px 8px; cursor: pointer; }
+.speed button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.clock { margin-left: auto; font-size: 12px; color: var(--muted); }
+canvas#tl { width: 100%; height: 34px; display: block; cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.side { display: grid; gap: 16px; }
+.ledger { padding: 12px 12px 6px; }
+.ledger-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td { padding: 6px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface-2); }
+tbody tr.followed { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.who { display: flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; }
+.bar { width: 64px; height: 7px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; }
+.status { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+.st-ok { color: var(--muted); } .st-carry { color: var(--worker); }
+.st-thief { color: var(--theft); border: 1px solid var(--theft); }
+.st-held { color: var(--page); background: var(--muted); } .st-starve { color: var(--theft); }
+.feed { padding: 12px; }
+.feed ol { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; display: grid; gap: 2px; }
+.feed li { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.feed li:hover { background: var(--surface-2); }
+.feed li .t { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.feed li.k-theft { box-shadow: inset 3px 0 0 var(--theft); }
+.feed li.k-arrest { box-shadow: inset 3px 0 0 var(--police); }
+.feed li.k-police-pay { box-shadow: inset 3px 0 0 var(--accent); }
+.feed li.empty { display: block; color: var(--muted); cursor: default; }
+.charts { padding: 14px; }
+.multiples { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 20px; }
+.chart h3 { font-size: 13px; font-weight: 600; margin: 0 0 2px; }
+.chart p { margin: 0; font-size: 12px; color: var(--muted); }
+.chart svg { width: 100%; height: auto; display: block; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 24px; padding: 14px; }
+.rules p { margin: 0; color: var(--muted); max-width: 62ch; }
+.rules strong { color: var(--ink); }
+.note { font-size: 12px; color: var(--muted); }
+.note a { color: var(--accent); }
+.error { color: var(--theft); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Humanoid Civilization</h1>
+      <p class="lede">Six learning agents share a small town: four warehouse workers, a farmer and a police officer. Nothing is automatic. Every coin that changes hands was handed over, traded or grabbed by someone who chose to. Pick a training stage and watch what they have learned. This first version taught everyone to steal, which led to the <a href="index.html">full society (v2)</a>.</p>
+    </div>
+    <div class="stages" id="stages"><span class="label">Training stage</span></div>
+    <div class="summary" id="summary"></div>
+  </header>
+
+  <section class="stage">
+    <div class="panel viewwrap">
+      <div class="view" id="view">
+        <div class="loading" id="loading">Loading the town…</div>
+        <button class="follow" id="follow" type="button" hidden>Stop following</button>
+        <span class="hint">Drag to orbit · scroll to zoom · click a ledger row to follow someone</span>
+      </div>
+      <div class="controls">
+        <button class="ctl" id="play" type="button">Play</button>
+        <div class="speed" id="speed" role="group" aria-label="Playback speed">
+          <button type="button" data-s="3">slow</button>
+          <button type="button" data-s="8" aria-pressed="true">normal</button>
+          <button type="button" data-s="24">fast</button>
+        </div>
+        <span class="clock mono" id="clock">step 0 / 600</span>
+      </div>
+      <canvas id="tl" aria-label="Episode timeline; click to jump. Tall red ticks are thefts, tall blue arrests, green food sales, amber shipped boxes, teal payments to police."></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--worker)"></i>worker</span>
+        <span><i class="dot" style="background:var(--farmer)"></i>farmer</span>
+        <span><i class="dot" style="background:var(--police)"></i>police</span>
+        <span><i class="dot" style="background:var(--theft)"></i>theft</span>
+        <span><i class="dot" style="background:var(--accent)"></i>paid police</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="panel ledger">
+        <h2>Ledger</h2>
+        <div class="ledger-scroll">
+          <table>
+            <thead><tr><th>Agent</th><th>Cash</th><th>Hunger</th><th>Food</th><th>Asks</th><th>Status</th></tr></thead>
+            <tbody id="ledger"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel feed">
+        <h2>What just happened</h2>
+        <ol id="feed"></ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel charts">
+    <h2>How the town changed while they learned</h2>
+    <div class="multiples" id="charts"></div>
+    <p class="note" id="curve-note"></p>
+  </section>
+
+  <section class="panel rules">
+    <p><strong>Jobs.</strong> Workers carry crates from the warehouse shelves to the loading dock; each shipped crate earns 5¢ from the outside world, the only money entering the town. The farmer pays 1¢ to plant a plot, waits for it to grow and harvests 2 food.</p>
+    <p><strong>Food.</strong> Hunger rises every step. Food is only sold hand to hand: a buyer stands next to someone holding food and pays that person's asking price. Sellers raise or lower their own price.</p>
+    <p><strong>Crime.</strong> Anyone can grab cash from a neighbour. People nearby see it and remember. A police officer who saw a theft can detain the thief and take their cash, then decide whether to hand any back.</p>
+    <p><strong>Paying the police.</strong> Nobody is charged. Anyone can hand an officer a coin, so police are only paid if people decide protection is worth it.</p>
+    <p class="note">3D models by <a href="https://kenney.nl" rel="noopener">Kenney</a> (CC0), rendered with three.js. Source: <a href="https://github.com/neomorrison/humanoid-civilization" rel="noopener">github.com/neomorrison/humanoid-civilization</a>.</p>
+  </section>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+const $ = (id) => document.getElementById(id);
+const cssVar = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const ROLE_VAR = { worker: "--worker", farmer: "--farmer", police: "--police" };
+const ROLE_TINT = { worker: 0xf2b53a, farmer: 0x5fbf5a, police: 0x5a86e0 };
+const EVENT_VAR = { theft: "--theft", arrest: "--police", "bought food": "--farmer", "shipped box": "--worker", "police-pay": "--accent" };
+const GRID_W = 20, GRID_H = 14;
+
+let index = null, rep = null, names = [], t = 0, playing = false, speed = 8, lastStep = -1, stageIdx = 0, followIdx = -1;
+
+// ------------------------------------------------------------------ 3D scene
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xcfe6f2);
+scene.fog = new THREE.Fog(0xcfe6f2, 38, 70);
+const camera = new THREE.PerspectiveCamera(40, 16 / 10, 0.1, 200);
+camera.position.set(-3, 12.5, 14);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.46;
+controls.minDistance = 4; controls.maxDistance = 45;
+scene.add(new THREE.HemisphereLight(0xdff1ff, 0x6f8f5a, 1.0));
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.1);
+sun.position.set(-10, 18, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -16, right: 16, top: 13, bottom: -13, near: 1, far: 50 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const W = (x, y) => new THREE.Vector3(x - (GRID_W - 1) / 2, 0, -(y - (GRID_H - 1) / 2));
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), new THREE.MeshLambertMaterial({ color: 0x8cbd66 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const soilMat = new THREE.MeshLambertMaterial({ color: 0x8a6440 });
+const appleMat = new THREE.MeshLambertMaterial({ color: 0xd8432b });
+const ringMat = new THREE.MeshBasicMaterial({ color: 0xe0443a, transparent: true, opacity: 0.85 });
+
+const loader = new GLTFLoader();
+const models = {};
+async function loadModel(key, path) {
+  const g = await loader.loadAsync(path);
+  g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  models[key] = g;
+}
+function place(key, x, y, { s = 1, sx, sy, sz, rot = 0, h = 0 } = {}) {
+  const o = models[key].scene.clone(true);
+  const p = W(x, y);
+  o.position.set(p.x, h, p.z);
+  o.scale.set(sx ?? s, sy ?? s, sz ?? s);
+  o.rotation.y = rot;
+  scene.add(o);
+  return o;
+}
+
+let plotCrops = [], dockPile = [], zoneCfg = null;
+
+function buildTown(cfg) {
+  zoneCfg = cfg;
+  const tiles = (box, key, h = 0) => {
+    const [x0, y0, x1, y1] = box;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) place(key, x, y, { h });
+  };
+  // paved areas
+  tiles(cfg.dock, "pavement");
+  tiles(cfg.market, "pavement");
+  tiles(cfg.station, "pavement");
+  tiles(cfg.shelves, "pavement");
+  // market: fountain in the middle, banners at the corners
+  const mx = (cfg.market[0] + cfg.market[2]) / 2, my = (cfg.market[1] + cfg.market[3]) / 2;
+  place("fountain", mx, my, { s: 1.0, h: 0.01 });
+  place("banner", cfg.market[0] - 0.45, cfg.market[3] + 0.45, { s: 1.4 });
+  place("banner", cfg.market[2] + 0.45, cfg.market[3] + 0.45, { s: 1.4 });
+  // warehouse behind the shelves, crates on the shelves
+  place("garage", (cfg.shelves[0] + cfg.shelves[2]) / 2, cfg.shelves[3] + 2.1, { s: 3.2 });
+  for (let x = cfg.shelves[0]; x <= cfg.shelves[2]; x++)
+    for (let y = cfg.shelves[1]; y <= cfg.shelves[3]; y++) {
+      place("block", x - 0.15, y, { s: 0.42 });
+      place("block", x + 0.18, y - 0.1, { s: 0.36, h: 0.21, rot: 0.4 });
+    }
+  // dock: flags and a road with lamp posts to the outside world
+  place("flag", cfg.dock[0] - 0.4, cfg.dock[3] + 0.4, { s: 1.3 });
+  place("flag", cfg.dock[2] + 0.4, cfg.dock[3] + 0.4, { s: 1.3 });
+  for (let y = cfg.dock[1]; y <= cfg.dock[3]; y++) place("road", cfg.dock[2] + 1, y, { rot: Math.PI / 2 });
+  for (let y = cfg.dock[3] + 1; y <= GRID_H + 3; y++) place("road", cfg.dock[2] + 1, y, { rot: Math.PI / 2 });
+  // farm: fence, soil plots and crops
+  const [fx0, fy0, fx1, fy1] = cfg.farm;
+  for (let x = fx0; x <= fx1; x += 2) {
+    place("wall", x + 0.5, fy1 + 0.75, { s: 0.9 });
+    place("wall", x + 0.5, fy0 - 0.75, { s: 0.9 });
+  }
+  place("wall", fx1 + 0.8, (fy0 + fy1) / 2, { s: 0.9, rot: Math.PI / 2 });
+  plotCrops = rep.plots.map(([px, py]) => {
+    const soil = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.86), soilMat);
+    const p = W(px, py); soil.position.set(p.x, 0.03, p.z); soil.receiveShadow = true; scene.add(soil);
+    const crop = models.sprout.scene.clone(true);
+    crop.position.set(p.x, 0.05, p.z); scene.add(crop);
+    const apples = new THREE.Group();
+    [[-0.12, 0.3, 0.05], [0.1, 0.36, -0.06], [0.02, 0.44, 0.1]].forEach(([dx, dy, dz]) => {
+      const a = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), appleMat);
+      a.position.set(dx, dy, dz); a.castShadow = true; apples.add(a);
+    });
+    apples.position.copy(crop.position); scene.add(apples);
+    return { crop, apples };
+  });
+  // police station building and flag
+  place("house-c", cfg.station[0] - 0.2, cfg.station[1] - 2.2, { s: 2.6 });
+  place("flag", cfg.station[2] + 0.45, cfg.station[3] + 0.45, { s: 1.4 });
+  // the rest of the town: houses along the south edge, trees and lamp-lit road
+  [["house-a", 6, -2.3, 2.2], ["house-b", 9, -2.4, 2.2], ["house-d", 12.5, -2.3, 2.2], ["house-a", 16, -2.4, 2.2],
+   ["house-b", 22.4, 3, 2.2], ["house-d", 22.4, 6.5, 2.2]].forEach(([k, x, y, s], i) =>
+    place(k, x, y, { s, rot: i >= 4 ? -Math.PI / 2 : 0 }));
+  [[-2.6, 3], [-2.8, 7], [-2.5, 11], [4.5, 15.6], [11.5, 15.4], [15, 15.7], [19.5, 15.5], [22, 11], [22.5, -0.5],
+   [3, -3.2], [18.5, -3.5], [-2.8, -1.5]].forEach(([x, y], i) => place("tree", x, y, { s: 1.5 + (i % 3) * 0.25, rot: i }));
+  [[-4.5, 14], [24, 14.5], [-5, -3], [25, -4]].forEach(([x, y]) => place("trees-tall", x, y, { s: 3 }));
+  clouds = [[-4, 12, 5], [6, 13, -8], [15, 11.5, 3], [24, 13, -4]].map(([x, h, z]) => {
+    const c = models.cloud.scene.clone(true); c.position.set(x - 10, h, z); c.scale.setScalar(2.2);
+    c.traverse((o) => { if (o.isMesh) o.castShadow = false; }); scene.add(c); return c;
+  });
+  // shipped crates pile up at the dock's outer edge
+  for (let k = 0; k < 16; k++) {
+    const b = models.block.scene.clone(true);
+    const p = W(cfg.dock[2] + 1.45 + (k % 2) * 0.4, cfg.dock[1] + Math.floor(k / 4) * 0.5);
+    b.position.set(p.x, 0.02 + (Math.floor(k / 2) % 2) * 0.2, p.z);
+    b.scale.setScalar(0.38); b.visible = false; scene.add(b); dockPile.push(b);
+  }
+}
+let clouds = [];
+
+// ------------------------------------------------------------------ agents
+let agents = [];
+function tintCharacter(obj, hex) {
+  obj.traverse((o) => {
+    if (o.isMesh) {
+      o.material = o.material.clone();
+      o.material.color = new THREE.Color(1, 1, 1).lerp(new THREE.Color(hex), 0.62);
+    }
+  });
+}
+function makeTag() {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 80;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set(1.9, 0.6, 1); sp.renderOrder = 10;
+  return { sprite: sp, canvas: c, tex, key: "" };
+}
+function drawTag(tag, name, role, money, hunger, flag) {
+  const key = `${name}|${money}|${Math.round(hunger * 20)}|${flag}`;
+  if (tag.key === key) return; tag.key = key;
+  const g = tag.canvas.getContext("2d"); g.clearRect(0, 0, 256, 80);
+  g.fillStyle = "rgba(20,28,32,0.82)"; roundRect(g, 4, 6, 248, 50, 12); g.fill();
+  g.fillStyle = "#" + ROLE_TINT[role].toString(16).padStart(6, "0"); g.beginPath(); g.arc(28, 31, 11, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#ffffff"; g.font = "600 24px Archivo, Arial, sans-serif"; g.textBaseline = "middle";
+  g.fillText(name, 46, 32);
+  g.font = "500 22px 'IBM Plex Mono', monospace"; g.textAlign = "right"; g.fillStyle = "#ffd76a";
+  g.fillText(money.toFixed(1) + "¢", 240, 32); g.textAlign = "left";
+  g.fillStyle = "rgba(255,255,255,0.18)"; roundRect(g, 18, 62, 220, 9, 4); g.fill();
+  g.fillStyle = hunger >= 0.99 ? "#ff6b5e" : hunger > 0.7 ? "#f2b53a" : "#9bd1a0";
+  roundRect(g, 18, 62, Math.max(6, 220 * hunger), 9, 4); g.fill();
+  if (flag) { g.fillStyle = "#ff6b5e"; g.font = "700 18px Archivo, Arial"; g.fillText(flag, 110, 72); }
+  tag.tex.needsUpdate = true;
+}
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+
+function buildAgents() {
+  agents.forEach((a) => scene.remove(a.root));
+  agents = rep.roles.map((role, i) => {
+    const root = new THREE.Group();
+    const body = SkeletonUtils.clone(models.character.scene);
+    body.scale.setScalar(1.9);
+    tintCharacter(body, ROLE_TINT[role]);
+    root.add(body);
+    const mixer = new THREE.AnimationMixer(body);
+    const actions = {};
+    models.character.animations.forEach((clip) => { actions[clip.name] = mixer.clipAction(clip); });
+    const crate = models.block.scene.clone(true); crate.scale.setScalar(0.42); crate.position.set(0, 0.95, 0.45); crate.visible = false;
+    root.add(crate);
+    const food = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), appleMat); food.position.set(0.4, 0.75, 0.3); food.visible = false;
+    root.add(food);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; ring.visible = false;
+    root.add(ring);
+    const tag = makeTag(); tag.sprite.position.set(0, 2.15, 0); root.add(tag.sprite);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.4, 28), new THREE.MeshBasicMaterial({ color: ROLE_TINT[role], transparent: true, opacity: 0.75 }));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.02; root.add(disc);
+    scene.add(root);
+    const a = { role, root, body, mixer, actions, crate, food, ring, tag, base: null, yaw: 0, oneShotUntil: 0 };
+    setBase(a, "idle", true);
+    return a;
+  });
+}
+function setBase(a, name, instant) {
+  if (a.base === name || !a.actions[name]) return;
+  const next = a.actions[name];
+  next.reset().setLoop(THREE.LoopRepeat).play();
+  if (a.baseAction && !instant) a.baseAction.crossFadeTo(next, 0.25, false);
+  else if (a.baseAction) a.baseAction.stop();
+  a.baseAction = next; a.base = name;
+}
+function oneShot(a, name) {
+  const act = a.actions[name]; if (!act) return;
+  act.reset().setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = false; act.setEffectiveWeight(1);
+  act.fadeIn(0.1).play();
+  if (a.baseAction) a.baseAction.fadeOut(0.1);
+  const back = () => { if (a.baseAction) { a.baseAction.reset().fadeIn(0.2).play(); } a.mixer.removeEventListener("finished", back); };
+  a.mixer.addEventListener("finished", back);
+}
+
+// ------------------------------------------------------------------ coins and floating text
+let flights = [], floaters = [];
+function flyCoins(fromPos, toPos, n) {
+  for (let k = 0; k < n; k++) {
+    const c = models.coin.scene.clone(true); c.scale.setScalar(0.9); scene.add(c);
+    flights.push({ obj: c, from: fromPos.clone().setY(0.9), to: toPos.clone().setY(0.9), t: -k * 0.08, dur: 0.7 });
+  }
+}
+function floatText(pos, text, color) {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 64;
+  const g = c.getContext("2d"); g.font = "700 30px Archivo, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.lineWidth = 6; g.strokeStyle = "rgba(15,20,24,0.8)"; g.strokeText(text, 128, 32); g.fillStyle = color; g.fillText(text, 128, 32);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.scale.set(2.2, 0.55, 1); sp.position.copy(pos).setY(2.8); sp.renderOrder = 11; scene.add(sp);
+  floaters.push({ sp, t: 0, dur: 1.4 });
+}
+
+// ------------------------------------------------------------------ replay → scene
+function agentPos(i, tt) {
+  const n = rep.frames.length - 1;
+  const i0 = Math.min(Math.floor(tt), n), i1 = Math.min(i0 + 1, n), f = tt - Math.floor(tt);
+  const a = rep.frames[i0].pos[i], b = rep.frames[i1].pos[i];
+  const jump = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) > 2;
+  const s = jump ? 0 : f;
+  return W(a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s);
+}
+const EV_ANIM = { theft: "attack-melee-right", arrest: "interact-right", gave: "interact-left", "bought food": "interact-right",
+  ate: "emote-yes", planted: "pick-up", harvested: "pick-up", "shipped box": "interact-right" };
+
+function onStep(step, prevStep) {
+  const f = rep.frames[step];
+  rep.plots.forEach((_, k) => {
+    const st = f.plots[k], pc = plotCrops[k];
+    pc.crop.visible = st !== 0;
+    const g = st > 0 ? 1 - st / zoneCfg.grow_steps : 1;
+    pc.crop.scale.setScalar(0.8 + 2.2 * g);
+    pc.apples.visible = st < 0;
+  });
+  const shipped = rep.events.filter((e) => e[1] === "shipped box" && e[0] <= step).length;
+  dockPile.forEach((b, k) => { b.visible = k < Math.min(shipped, dockPile.length); });
+  agents.forEach((a, i) => {
+    a.crate.visible = !!f.carry[i];
+    a.food.visible = f.food[i] > 0;
+    a.ring.visible = !!f.seen_thief[i];
+    const flag = f.detained[i] ? "DETAINED" : f.hunger[i] >= 0.99 ? "STARVING" : "";
+    drawTag(a.tag, names[i], a.role, f.money[i], f.hunger[i], flag);
+  });
+  // events that happened since the last step we showed (only when playing forward by a few steps)
+  if (prevStep >= 0 && step > prevStep && step - prevStep < 12) {
+    rep.events.filter((e) => e[0] > prevStep && e[0] <= step).forEach((e) => {
+      const [, kind, i, j, amt] = e;
+      const a = agents[i]; if (!a) return;
+      if (EV_ANIM[kind]) oneShot(a, EV_ANIM[kind]);
+      const pi = agentPos(i, step), pj = j >= 0 ? agentPos(j, step) : null;
+      if (kind === "shipped box") { flyCoins(W(zoneCfg.dock[2] + 2.5, zoneCfg.dock[3] + 3), pi, 2); floatText(pi, `+${amt}¢`, "#ffd76a"); }
+      else if (kind === "bought food") { flyCoins(pi, pj, 2); floatText(pi, `bought food ${amt}¢`, "#9be38f"); }
+      else if (kind === "theft") { flyCoins(pj, pi, 2); floatText(pi, `stole ${amt}¢`, "#ff7b6e"); }
+      else if (kind === "arrest") { flyCoins(pj, pi, 3); floatText(pi, "ARREST", "#8fb4ff"); }
+      else if (kind === "gave") { flyCoins(pi, pj, 1); floatText(pi, rep.roles[j] === "police" ? "paid police" : "gave 1¢", rep.roles[j] === "police" ? "#7fd4dc" : "#ffffff"); }
+      else if (kind === "harvested") floatText(pi, `harvest +${amt}`, "#9be38f");
+      else if (kind === "ate") floatText(pi, "ate", "#ffffff");
+    });
+  }
+}
+
+function updateAgents(dt) {
+  const n = rep.frames.length - 1;
+  const i0 = Math.min(Math.floor(t), n), i1 = Math.min(i0 + 1, n);
+  const f0 = rep.frames[i0], f1 = rep.frames[i1];
+  agents.forEach((a, i) => {
+    const p = agentPos(i, t);
+    a.root.position.set(p.x, 0, p.z);
+    const dx = f1.pos[i][0] - f0.pos[i][0], dy = f1.pos[i][1] - f0.pos[i][1];
+    const moving = playing && (dx !== 0 || dy !== 0) && Math.abs(dx) + Math.abs(dy) <= 2;
+    if (moving) {
+      const target = Math.atan2(dx, -dy);   // world +x → scene +x, world +y → scene -z
+      let d = target - a.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+      a.yaw += d * Math.min(1, dt * 12);
+    }
+    a.root.rotation.y = a.yaw;
+    let base = "idle";
+    if (f0.detained[i]) base = "sit";
+    else if (moving) base = speed > 12 ? "sprint" : "walk";
+    else if (f0.carry[i]) base = "holding-both";
+    setBase(a, base, false);
+    a.mixer.timeScale = moving ? Math.min(2.2, 0.6 + speed / 10) : 1;
+    a.mixer.update(dt);
+  });
+}
+
+// ------------------------------------------------------------------ UI (ledger, feed, timeline, charts)
+function nameAgents(roles) { let w = 0; return roles.map((r) => r === "worker" ? "W" + (++w) : r === "farmer" ? "Farmer" : "Police"); }
+function evText(e) {
+  const [, kind, i, j, amt] = e; const a = names[i], b = j >= 0 ? names[j] : "";
+  return { "shipped box": `${a} shipped a crate, +${amt}¢`, "bought food": `${a} bought food from ${b} for ${amt}¢`,
+    ate: `${a} ate`, harvested: `${a} harvested ${amt} food`, planted: `${a} planted a plot, −${amt}¢`,
+    gave: rep.roles[j] === "police" ? `${a} paid ${b} 1¢` : `${a} gave ${b} 1¢`,
+    theft: `${a} stole ${amt}¢ from ${b}`, arrest: `${a} detained ${b} and took ${amt}¢` }[kind] || kind;
+}
+const evClass = (e) => e[1] === "gave" && rep.roles[e[3]] === "police" ? "k-police-pay" : "k-" + e[1].split(" ")[0];
+
+function renderLedger(step) {
+  const f = rep.frames[step];
+  $("ledger").innerHTML = rep.roles.map((role, i) => {
+    let st = '<span class="status st-ok">free</span>';
+    if (f.detained[i]) st = '<span class="status st-held">detained</span>';
+    else if (f.seen_thief[i]) st = '<span class="status st-thief">seen stealing</span>';
+    else if (f.hunger[i] >= 0.99) st = '<span class="status st-starve">starving</span>';
+    else if (f.carry[i]) st = '<span class="status st-carry">carrying crate</span>';
+    const hcol = f.hunger[i] >= 0.99 ? "var(--theft)" : f.hunger[i] > 0.7 ? "var(--worker)" : "var(--muted)";
+    return `<tr data-i="${i}" class="${i === followIdx ? "followed" : ""}"><td><span class="who"><i class="dot" style="background:var(${ROLE_VAR[role]})"></i>${names[i]}</span></td>
+      <td class="num">${f.money[i].toFixed(1)}¢</td>
+      <td><div class="bar" title="${Math.round(f.hunger[i] * 100)}% hungry"><i style="width:${Math.round(f.hunger[i] * 100)}%;background:${hcol}"></i></div></td>
+      <td class="num">${f.food[i]}</td><td class="num">${f.price[i].toFixed(1)}¢</td><td>${st}</td></tr>`;
+  }).join("");
+}
+function renderFeed(step) {
+  const ev = rep.events.filter((e) => e[0] <= step && e[1] !== "ate").slice(-40).reverse();
+  $("feed").innerHTML = ev.length ? ev.map((e) => `<li class="${evClass(e)}" data-t="${e[0]}"><span class="t">${e[0]}</span><span>${evText(e)}</span></li>`).join("")
+    : '<li class="empty">Nothing has happened yet.</li>';
+}
+function drawTimeline() {
+  const c = $("tl"), r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const Wd = Math.max(1, Math.round(r.width * dpr)), Hd = Math.round(34 * dpr);
+  if (c.width !== Wd || c.height !== Hd) { c.width = Wd; c.height = Hd; }
+  const g = c.getContext("2d"), n = rep.frames.length - 1;
+  g.clearRect(0, 0, Wd, Hd);
+  g.fillStyle = cssVar("--surface-2"); g.fillRect(0, Hd * 0.3, Wd, Hd * 0.4);
+  const x = (s) => (s / n) * (Wd - 2) + 1;
+  rep.events.forEach((e) => {
+    let col = EVENT_VAR[e[1]]; if (e[1] === "gave" && rep.roles[e[3]] === "police") col = EVENT_VAR["police-pay"];
+    if (!col) return;
+    const tall = e[1] === "theft" || e[1] === "arrest";
+    g.fillStyle = cssVar(col); g.fillRect(Math.round(x(e[0])), tall ? 0 : Hd * 0.3, Math.max(1, dpr), tall ? Hd : Hd * 0.4);
+  });
+  g.fillStyle = cssVar("--ink"); g.fillRect(Math.round(x(Math.min(t, n))) - dpr, 0, 2 * dpr, Hd);
+}
+function drawCharts() {
+  if (!index || !index.curve || !index.curve.length) { $("charts").innerHTML = ""; return; }
+  const cv = index.curve;
+  const series = [["boxes", "Crates shipped", "per episode"], ["food_sold", "Food sold", "per episode"],
+    ["thefts", "Thefts", "per episode"], ["arrests", "Arrests", "per episode"],
+    ["gifts_to_police", "Coins paid to police", "per episode"], ["starving", "Hungry-steps", "agent-steps starving, per episode"]];
+  const sel = index.stages[stageIdx] ? index.stages[stageIdx].it : null;
+  const Wc = 260, Hc = 110, L = 34, R = 10, T = 8, B = 20;
+  const xs = cv.map((p) => p.it), xmax = Math.max(1, ...xs);
+  const fmt = (v) => v >= 100 ? Math.round(v) : v >= 10 ? v.toFixed(0) : v.toFixed(1);
+  $("charts").innerHTML = series.map(([key, title, sub]) => {
+    const ys = cv.map((p) => p[key] || 0), ymax = Math.max(1, ...ys) * 1.1;
+    const X = (v) => L + (v / xmax) * (Wc - L - R), Y = (v) => T + (1 - v / ymax) * (Hc - T - B);
+    const pts = cv.map((p, k) => `${X(xs[k]).toFixed(1)},${Y(ys[k]).toFixed(1)}`).join(" ");
+    const area = `${X(xs[0]).toFixed(1)},${Y(0)} ${pts} ${X(xs[xs.length - 1]).toFixed(1)},${Y(0)}`;
+    const ticks = [0, ymax / 1.1 / 2, ymax / 1.1].map((v) =>
+      `<line x1="${L}" x2="${Wc - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/>
+       <text x="${L - 5}" y="${Y(v) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${fmt(v)}</text>`).join("");
+    const mark = sel != null ? `<line x1="${X(sel)}" x2="${X(sel)}" y1="${T}" y2="${Hc - B}" stroke="var(--accent)" stroke-width="1.5"/>` : "";
+    return `<div class="chart"><h3>${title}</h3><p>${sub}</p><svg viewBox="0 0 ${Wc} ${Hc}" role="img" aria-label="${title} over training">
+      ${ticks}<polygon points="${area}" fill="var(--accent)" fill-opacity="0.12"/>
+      <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${mark}
+      <circle cx="${X(xs[xs.length - 1])}" cy="${Y(ys[ys.length - 1])}" r="3.5" fill="var(--accent)"/>
+      <text x="${L}" y="${Hc - 5}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">0</text>
+      <text x="${Wc - R}" y="${Hc - 5}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">it ${xmax}</text></svg></div>`;
+  }).join("");
+  $("curve-note").textContent = "Averages over the most recent training episodes at each iteration. The teal line marks the stage being replayed.";
+}
+
+// ------------------------------------------------------------------ main loop
+function resize() {
+  const r = view.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / Math.max(1, r.height); camera.updateProjectionMatrix();
+}
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(0.1, clock.getDelta());
+  if (rep && agents.length) {
+    const n = rep.frames.length - 1;
+    if (playing) {
+      t += dt * speed;
+      if (t >= n) { t = n; playing = false; $("play").textContent = "Replay"; }
+    }
+    const step = Math.floor(t);
+    if (step !== lastStep) {
+      onStep(step, lastStep);
+      renderLedger(step); renderFeed(step);
+      $("clock").textContent = `step ${step} / ${n}`;
+      lastStep = step;
+    }
+    updateAgents(dt);
+    drawTimeline();
+    if (followIdx >= 0) {
+      const p = agents[followIdx].root.position;
+      const off = camera.position.clone().sub(controls.target);
+      controls.target.lerp(p, Math.min(1, dt * 4));
+      camera.position.copy(controls.target).add(off);
+    }
+  }
+  flights = flights.filter((fl) => {
+    fl.t += dt;
+    if (fl.t < 0) { fl.obj.visible = false; return true; }
+    fl.obj.visible = true;
+    const u = Math.min(1, fl.t / fl.dur);
+    fl.obj.position.lerpVectors(fl.from, fl.to, u); fl.obj.position.y += Math.sin(Math.PI * u) * 1.1;
+    fl.obj.rotation.y += dt * 12;
+    if (u >= 1) { scene.remove(fl.obj); return false; }
+    return true;
+  });
+  floaters = floaters.filter((fl) => {
+    fl.t += dt; const u = fl.t / fl.dur;
+    fl.sp.position.y += dt * 0.6; fl.sp.material.opacity = Math.max(0, 1 - u * u);
+    if (u >= 1) { scene.remove(fl.sp); fl.sp.material.map.dispose(); return false; }
+    return true;
+  });
+  clouds.forEach((c, k) => { c.position.x += dt * (0.15 + k * 0.03); if (c.position.x > 30) c.position.x = -30; });
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+async function selectStage(k) {
+  stageIdx = k;
+  document.querySelectorAll(".chip").forEach((c, i) => c.setAttribute("aria-pressed", i === k ? "true" : "false"));
+  const s = index.stages[k];
+  rep = await (await fetch("v1/replays/" + s.file)).json();
+  names = nameAgents(rep.roles);
+  if (!zoneCfg) buildTown(rep.config);
+  buildAgents();
+  t = 0; lastStep = -1;
+  const m = rep.summary;
+  const police = rep.events.filter((e) => e[1] === "gave" && rep.roles[e[3]] === "police").length;
+  $("summary").innerHTML = [["crates shipped", m.boxes], ["food sold", m.food_sold], ["thefts", m.thefts],
+    ["arrests", m.arrests], ["coins paid to police", police], ["hungry-steps", m.starving]]
+    .map(([a, v]) => `<span>${a} <b>${Math.round(v)}</b></span>`).join("") +
+    `<span>stage <b>${s.it === 0 ? "untrained" : "it " + s.it}</b>, ${(s.samples / 1e6).toFixed(1)} M agent-steps</span>`;
+  drawCharts();
+}
+
+async function boot() {
+  resize();
+  try {
+    index = await (await fetch("v1/replays/index.json")).json();
+  } catch (err) {
+    $("loading").innerHTML = '<span class="error">No replays found next to this page (v1/replays/index.json).</span>';
+    return;
+  }
+  await Promise.all([
+    loadModel("character", "assets/arena/character-soldier.glb"), loadModel("block", "assets/arena/block.glb"),
+    loadModel("banner", "assets/arena/banner.glb"), loadModel("tree", "assets/arena/tree.glb"),
+    loadModel("garage", "assets/city/building-garage.glb"), loadModel("house-a", "assets/city/building-small-a.glb"),
+    loadModel("house-b", "assets/city/building-small-b.glb"), loadModel("house-c", "assets/city/building-small-c.glb"),
+    loadModel("house-d", "assets/city/building-small-d.glb"), loadModel("pavement", "assets/city/pavement.glb"),
+    loadModel("fountain", "assets/city/pavement-fountain.glb"), loadModel("trees-tall", "assets/city/grass-trees-tall.glb"),
+    loadModel("road", "assets/city/road-straight-lightposts.glb"), loadModel("coin", "assets/platformer/coin.glb"),
+    loadModel("flag", "assets/platformer/flag.glb"), loadModel("sprout", "assets/platformer/grass-small.glb"),
+    loadModel("cloud", "assets/platformer/cloud.glb"), loadModel("wall", "assets/fps/wall-low.glb"),
+  ]);
+  index.stages.forEach((s, k) => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.id = "stage-" + k;
+    b.textContent = s.it === 0 ? "untrained" : `it ${s.it}`;
+    b.title = `${(s.samples / 1e6).toFixed(1)} M agent-steps of practice`;
+    b.addEventListener("click", () => selectStage(k));
+    $("stages").appendChild(b);
+  });
+  await selectStage(index.stages.length - 1);
+  $("loading").hidden = true;
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) { playing = true; $("play").textContent = "Pause"; }
+  frame();
+}
+
+$("play").addEventListener("click", () => {
+  if (!rep) return;
+  if (t >= rep.frames.length - 1) { t = 0; lastStep = -1; }
+  playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
+});
+$("speed").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  speed = +b.dataset.s;
+  document.querySelectorAll("#speed button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+});
+$("tl").addEventListener("click", (e) => {
+  if (!rep) return;
+  const r = $("tl").getBoundingClientRect();
+  t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (rep.frames.length - 1); lastStep = -1;
+});
+$("feed").addEventListener("click", (e) => { const li = e.target.closest("li[data-t]"); if (li) { t = +li.dataset.t; lastStep = -1; } });
+$("ledger").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+  followIdx = +tr.dataset.i === followIdx ? -1 : +tr.dataset.i;
+  $("follow").hidden = followIdx < 0; lastStep = -1;
+});
+$("follow").addEventListener("click", () => { followIdx = -1; $("follow").hidden = true; lastStep = -1; });
+window.addEventListener("resize", resize);
+new ResizeObserver(resize).observe(view);
+new MutationObserver(() => { lastStep = -1; }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+boot();
+</script>
+</body>
+</html>
