@@ -1,9 +1,10 @@
 """Assemble the replay viewer site from training runs.
 
-    python scripts/build_site.py --run runs/society --v1 runs/economy --out site
+    python scripts/build_site.py --run runs/town --v2 runs/society --v2-replays replays60 --v1 runs/economy --out site
 
-Writes site/index.html (Society v2 3D viewer) with site/replays/*.json and
-site/replays/index.json (stages + training curves). When --v1 is given the
+Writes site/index.html (Town Life v3 3D viewer) with site/replays/*.json and
+site/replays/index.json (stages + training curves). When --v2 is given the
+Society is kept at site/society.html with its replays in site/v2/replays/. When --v1 is given the
 first economy is kept at site/economy.html (3D) and site/v1/plan.html (2D),
 reading site/v1/replays/.
 """
@@ -64,7 +65,9 @@ def build_replays(run, out_dir, max_stages, sub="replays", note=""):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--run", default="runs/society")
+    ap.add_argument("--run", default="runs/town")
+    ap.add_argument("--v2", default=None, help="society v2 run to keep at society.html")
+    ap.add_argument("--v2-replays", default="replays60")
     ap.add_argument("--v1", default=None, help="economy v1 run to keep at economy.html")
     ap.add_argument("--out", default="site")
     ap.add_argument("--max-stages", type=int, default=10)
@@ -73,14 +76,18 @@ def main():
     args = ap.parse_args()
     v3 = os.path.join(HERE, "..", "viewer3d")
     ns, nc = build_replays(args.run, os.path.join(args.out, "replays"), args.max_stages, args.replays, args.note)
-    shutil.copy(os.path.join(v3, "index.html"), os.path.join(args.out, "index.html"))
+    shutil.copy(os.path.join(v3, "town.html"), os.path.join(args.out, "index.html"))
     shutil.copy(os.path.join(v3, "CREDITS.md"), os.path.join(args.out, "CREDITS.md"))
-    for sub in ("assets", "vendor"):
+    for sub in ("assets", "vendor", "town"):
         dst = os.path.join(args.out, sub)
         if os.path.exists(dst):
             shutil.rmtree(dst)
         shutil.copytree(os.path.join(v3, sub), dst)
-    msg = f"site: society {ns} stages, {nc} curve points"
+    msg = f"site: town {ns} stages, {nc} curve points"
+    if args.v2:
+        n2, c2 = build_replays(args.v2, os.path.join(args.out, "v2", "replays"), args.max_stages, args.v2_replays)
+        shutil.copy(os.path.join(v3, "society.html"), os.path.join(args.out, "society.html"))
+        msg += f"; society v2 {n2} stages, {c2} curve points"
     if args.v1:
         n1, c1 = build_replays(args.v1, os.path.join(args.out, "v1", "replays"), args.max_stages)
         shutil.copy(os.path.join(v3, "economy.html"), os.path.join(args.out, "economy.html"))

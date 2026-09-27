@@ -43,7 +43,7 @@ python -m civ.metrics runs/town/replays/replay_it00350.json             # score 
 python scripts/ablate_town.py --base runs/town/checkpoint.pkl          # switch ingredients off, compare
 python scripts/train_evil.py --town runs/town/policy.npz              # a newcomer who only wants harm
 python scripts/record_stages.py --run runs/society                     # (v2) full-length stage replays
-python scripts/build_site.py --run runs/town --v1 runs/economy --out site
+python scripts/build_site.py --run runs/town --v2 runs/society --v1 runs/economy --out site
 ```
 
 Tools that keep experiments cheap and honest:

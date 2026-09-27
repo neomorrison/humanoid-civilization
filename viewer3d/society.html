@@ -132,7 +132,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
   <header>
     <div>
       <h1>Humanoid Civilization</h1>
-      <p class="lede">A small society of learning agents lives whole lives in one town. They farm three kinds of food and work the warehouse. They trade, raise families, gossip, steal and police each other. Nothing is automatic: every gift, sale, theft, arrest and partnership is someone's choice. Their only reward is how happy their life is. Pick a training stage to watch what they have learned. (<a href="economy.html">v1: the first economy</a>)</p>
+      <p class="lede">A small society of learning agents lives whole lives in one town. They farm three kinds of food and work the warehouse. They trade, raise families, gossip, steal and police each other. Nothing is automatic: every gift, sale, theft, arrest and partnership is someone's choice. Their only reward is how happy their life is. Pick a training stage to watch what they have learned. (<a href="index.html">v3: Town Life</a> · <a href="economy.html">v1: the first economy</a>)</p>
     </div>
     <div class="stages" id="stages"><span class="label">Training stage</span></div>
     <div class="summary" id="summary"></div>
@@ -725,7 +725,7 @@ async function selectStage(k) {
   stageIdx = k;
   document.querySelectorAll(".chip").forEach((c, i) => c.setAttribute("aria-pressed", i === k ? "true" : "false"));
   const s = index.stages[k];
-  rep = await (await fetch("replays/" + s.file)).json();
+  rep = await (await fetch("v2/replays/" + s.file)).json();
   nameAll();
   if (!cfg) buildTown(rep.config);
   while (bodies.length < rep.config.slots) bodies.push(makeBody());
@@ -742,8 +742,8 @@ async function selectStage(k) {
 }
 async function boot() {
   resize();
-  try { index = await (await fetch("replays/index.json")).json(); }
-  catch (err) { $("loading").innerHTML = '<span class="error">No replays found next to this page (replays/index.json).</span>'; return; }
+  try { index = await (await fetch("v2/replays/index.json")).json(); }
+  catch (err) { $("loading").innerHTML = '<span class="error">No replays found next to this page (v2/replays/index.json).</span>'; return; }
   await Promise.all([
     loadModel("character", "assets/arena/character-soldier.glb"), loadModel("block", "assets/arena/block.glb"),
     loadModel("banner", "assets/arena/banner.glb"), loadModel("tree", "assets/arena/tree.glb"),
