@@ -83,7 +83,7 @@ class SocietyConfig:
     deficiency_damage: float = 0.003   # per missing nutrient; a deficient body cannot heal
     heal_rate: float = 0.004
     shelter_heal: float = 1.5          # extra healing while resting at your own home
-    cohabit_window: int = 10           # partners who both slept at home this recently live together
+    cohabit_window: int = 30           # partners who both slept at home within about half a year live together
     adult_age: float = 16.0
     child_age: float = 12.0
     old_age: float = 60.0
@@ -102,7 +102,9 @@ class SocietyConfig:
     w_hunger: float = 0.04
     w_starving: float = 0.06
     w_health: float = 0.03
-    w_variety: float = 0.02
+    w_variety: float = 0.0
+    w_craving: float = 0.03           # per nutrient: the felt craving for a food your body is running low on
+    crave_level: float = 0.5           # craving starts when a nutrient store drops below this
     w_robbed: float = 0.5
     w_detained: float = 0.02
     w_friends: float = 0.006
@@ -422,6 +424,8 @@ class Society:
         rew -= c.w_starving * (self.hunger >= 1) * al
         rew -= c.w_health * (1 - self.health) * al
         rew += c.w_variety * variety * al
+        craving = np.clip((c.crave_level - self.nutr) / c.crave_level, 0, 1).sum(-1)
+        rew -= c.w_craving * craving * al
         rew -= c.w_detained * (self.detained > 0) * (1 - 0.5 * self.traits[..., 2]) * al
         mutual = (self.opinion > 0.3) & (np.transpose(self.opinion, (0, 2, 1)) > 0.3) & al[:, None, :]
         rew += c.w_friends * np.minimum(mutual.sum(2), 5) * (0.5 + self.traits[..., 0]) * al
@@ -534,10 +538,12 @@ class Society:
         refused = self.shun[m, j, i]
         O = self.opinion
         if act == GIVE_FOOD and self.food[m, i].sum() > 0 and not refused and self.food[m, j].sum() < c.max_food:
-            t = int(np.argmax(self.food[m, i]))              # give what you have most of
+            # give what the receiver lacks most, of what you have; gratitude grows with their need
+            t = int(np.where(self.food[m, i] > 0, self.nutr[m, j], 9).argmin())
+            need = 0.5 * (1 - self.nutr[m, j, t]) + 0.5 * self.hunger[m, j]
             self.food[m, i, t] -= 1
             self.food[m, j, t] += 1
-            O[m, j, i] = min(1, O[m, j, i] + 0.15)
+            O[m, j, i] = min(1, O[m, j, i] + 0.15 * (0.2 + 0.8 * need))
             self._witness_good(m, i, 0.03)
             kid = self.mother[m, j] == self.pid[m, i] or self.father[m, j] == self.pid[m, i]
             if kid and self.age[m, j] < c.adult_age:
