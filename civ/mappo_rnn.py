@@ -174,7 +174,7 @@ class NumpyRNNPolicy:
         p = np.exp(lg - lg.max(1, keepdims=True))
         p /= p.sum(1, keepdims=True)
         u = rng.random((len(p), 1))
-        return (p.cumsum(1) < u).sum(1)
+        return np.minimum((p.cumsum(1) < u).sum(1), p.shape[1] - 1)   # float rounding can leave the cdf just below u
 
 
 def train(env, out, minutes, cfg: RNNConfig | None = None, seed=0, every=50, on_snapshot=None, resume=None,
