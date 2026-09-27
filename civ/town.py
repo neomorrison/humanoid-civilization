@@ -79,6 +79,8 @@ class TownConfig:
         "farm": (8, 17, 12, 13), "orchard": (8, 17, 12, 13), "dairy": (6, 15, 11, 12),
         "warehouse": (8, 17, 12, 13), "canteen": (10, 19, 15, 16)})
     winter_off: tuple = ("farm", "orchard")      # nothing to sow or pick in winter
+    lunch_break: bool = True           # experiment switch: shifts without a break
+    police: bool = True                # experiment switch: nobody can volunteer as police
     school_hours: tuple = (8, 15)
     shop_hours: tuple = (7, 20)        # the grocery shop in the market hall sells the businesses' stock
     hot_meal: float = 1.3             # a canteen meal satisfies more than cold food
@@ -192,6 +194,8 @@ class Town:
         sh = np.zeros((len(JOBS), DAY, DAYS_PER_YEAR), bool)
         for k, j in enumerate(JOBS[1:], 1):
             s0, s1, b0, b1 = c.shifts[j]
+            if not c.lunch_break:
+                b0 = b1 = -1
             for h in range(DAY):
                 on = s0 <= h < s1 and not b0 <= h < b1
                 for d in range(DAYS_PER_YEAR):
@@ -662,7 +666,7 @@ class Town:
             elif it == SLEEP:
                 self.asleep[m, s] = True
             elif it == ENLIST:
-                if adult[m, s]:
+                if adult[m, s] and c.police:
                     self.enlisted[m, s] = not self.enlisted[m, s]
                     if ev is not None:
                         ev.append((m, "enlisted" if self.enlisted[m, s] else "resigned", s, -1, 0))

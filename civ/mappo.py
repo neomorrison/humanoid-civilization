@@ -125,7 +125,7 @@ class NumpyPolicy:
 
 
 def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, on_snapshot=None, resume=None,
-          init_from=None, names_if_missing=None):
+          init_from=None, names_if_missing=None, max_iters=None):
     cfg = cfg or MAPPOConfig()
     os.makedirs(os.path.join(out, "snapshots"), exist_ok=True)
     key = jax.random.PRNGKey(seed)
@@ -186,7 +186,8 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
             on_snapshot(path, it, samples)
 
     snapshot()
-    while (time.time() - t0) / 60 < minutes:
+    start_it = it
+    while (time.time() - t0) / 60 < minutes and (max_iters is None or it - start_it < max_iters):
         t_it = time.time()
         rsum = 0.0
         for t in range(T):
