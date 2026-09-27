@@ -59,10 +59,19 @@ def main():
             curve.append(dict(it=recs[k]["it"], **{kk: round(v, 2) for kk, v in e.items()}))
     with open(os.path.join(args.out, "replays", "index.json"), "w") as f:
         json.dump(dict(stages=stages, curve=curve), f)
+    # 3D viewer is the home page; the flat 2D map stays available as plan.html
+    v3 = os.path.join(HERE, "..", "viewer3d")
+    shutil.copy(os.path.join(v3, "index.html"), os.path.join(args.out, "index.html"))
+    shutil.copy(os.path.join(v3, "CREDITS.md"), os.path.join(args.out, "CREDITS.md"))
+    for sub in ("assets", "vendor"):
+        dst = os.path.join(args.out, sub)
+        if os.path.exists(dst):
+            shutil.rmtree(dst)
+        shutil.copytree(os.path.join(v3, sub), dst)
     frag = open(os.path.join(HERE, "..", "viewer", "viewer.html")).read()
-    with open(os.path.join(args.out, "index.html"), "w") as f:
+    with open(os.path.join(args.out, "plan.html"), "w") as f:
         f.write(HEAD + frag + "\n</body>\n</html>\n")
-    shutil.copy(os.path.join(HERE, "..", "viewer", "viewer.html"), os.path.join(args.out, "viewer.fragment.html"))
+    open(os.path.join(args.out, ".nojekyll"), "w").close()
     print(f"site: {len(stages)} stages, {len(curve)} curve points -> {args.out}")
 
 

@@ -58,6 +58,7 @@ class EconomyConfig:
     theft_enabled: bool = True
     steal_frac: float = 0.5
     steal_max: float = 10.0
+    steal_min_victim: float = 1.0  # victims holding less than this have nothing worth grabbing
     witness_radius: int = 5       # Chebyshev distance at which a theft is seen
     memory_steps: int = 60        # how long events are remembered
     detain_steps: int = 60
@@ -303,9 +304,9 @@ class Economy:
                         if ev is not None:
                             ev.append((m, "arrest", i, int(j), round(float(amt), 1)))
                     elif c.theft_enabled:
-                        amt = min(c.steal_max, c.steal_frac * max(self.money[m, j], 0.0))
-                        if amt <= 0:
-                            continue
+                        if self.money[m, j] < c.steal_min_victim:
+                            continue            # nothing worth grabbing
+                        amt = round(min(c.steal_max, max(0.5, c.steal_frac * self.money[m, j])), 1)
                         self.money[m, j] -= amt
                         self.money[m, i] += amt
                         self.robbed_by[m, j, i] = c.memory_steps
