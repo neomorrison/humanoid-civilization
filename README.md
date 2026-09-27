@@ -2,70 +2,71 @@
 
 Creating a humanoid civilization where behavior is simulated and learned, not taught.
 
-**Watch it:** https://neomorrison.github.io/humanoid-civilization/ (3D replays of the town at
-different stages of training, with each person's ledger, their families, an event feed and
-training curves). The first economy (v1) is kept at
-[economy.html](https://neomorrison.github.io/humanoid-civilization/economy.html).
+**Watch it:** https://neomorrison.github.io/humanoid-civilization/ (3D replays at different
+stages of training). Earlier versions stay online: the Society (v2) and the first economy (v1).
+
+## Where this is going
+
+From hand-written behaviour to agents that invent their own: learned actions, then skills,
+then composing skills, then social strategies, communication and culture, then physical
+bodies and real robots. The world can be changed at any moment to see how they react.
+See [ROADMAP.md](ROADMAP.md).
+
+| version | world | what is learned |
+|---|---|---|
+| v1 Economy | warehouse, farmer, police | a policy choosing among a few jobs (everyone learned to steal) |
+| v2 Society | whole lives, families, three foods, reputation | a policy choosing high-level intentions, happiness as reward |
+| **v3 Town Life** | hours and seasons, sleep, jobs with shifts, canteen and shop, houses, school | daily routines, families, crime, from happiness |
+| Wild (in development) | bodies to keep in balance, materials, hidden recipes | primitive actions only; inner values evolve ([design](docs/WILD.md)) |
 
 ## The rule: no automated systems
 
-Nothing happens to anyone's money, goods or relationships unless someone chose it. There are no
-salaries, taxes, insurance premiums, shops or courts that act on their own:
+Nothing happens to anyone's money, goods or relationships unless someone chose it: gifts,
+sales at your own price, theft, gossip, shunning, courtship, police volunteering and arrests
+are all choices. Where the world still has fixed rules (in Town Life: the businesses' wage,
+shift and docking terms, the shop's prices) they are listed in the config and are the next
+things to hand over to agents.
 
-* **Work.** Crates carried from the warehouse to the dock earn coins from the outside world, the only
-  money that enters the town; shipping while others ship pays a team bonus.
-* **Food.** Grain must be planted and harvested, fruit picked in the orchard, the herd milked in the
-  pasture. People want all three; a one-food diet makes them sick.
-* **Trade.** A buyer next to someone holding food pays that person's own asking price. Gifts are
-  gifts. Sellers set their prices.
-* **Theft and justice.** Anyone can grab cash from a neighbour. Bystanders see it, remember it and
-  gossip. Enlisted police who saw a theft can detain the thief; two witnesses together can make a
-  citizens' arrest, of police too. Nobody pays police unless they choose to.
-* **Families.** Two adults who court each other and find each other attractive enough become
-  partners and move into a house; couples who live together have children, who inherit their
-  parents' temperament with mutation and depend on them for food.
+## Town Life (v3)
 
-The only reward is each person's happiness: fed, healthy and varied diet, safety, friends, a
-partner, thriving children, the regard of others, useful work, a little for savings, and grief when
-loved ones die. [DESIGN.md](DESIGN.md) explains which facts of human life make cooperation pay and
-how each one is built into the world.
-
-## How they learn
-
-Multi-agent PPO (JAX). One network is shared by everyone, conditioned on their own sex, age and
-traits (nature) and trained on their own experience (nurture). The critic sees the whole town
-during training; each person acts only on what they can perceive: the map, nearby people and what
-they visibly carry, and their own memories and opinions. Unborn and dead slots are masked out.
+One step is an hour and each day is a season. People need food of three kinds, sleep (best
+in their own bed at night), and money to buy food. They choose jobs (paid per hour present
+on shift, docked per hour missing outside the lunch break), lunch at the canteen, groceries
+at the shop, family dinners, courtship, children, school, and everything social. Their
+reward is happiness: fed, rested, healthy, with company, a partner, thriving children, the
+regard of others and a little savings, minus grief. See [DESIGN.md](DESIGN.md).
 
 ```bash
 pip install -r requirements.txt
-python scripts/train_society.py --minutes 240 --out runs/society       # train + record replays
-python scripts/build_site.py --run runs/society --v1 runs/economy --out site
-python -m http.server -d site 8000                                     # watch at localhost:8000
+python scripts/train_town.py --minutes 600 --out runs/town              # train + record replays
+python -m civ.metrics runs/town/replays/replay_it00350.json             # score a replay
+python scripts/ablate_town.py --base runs/town/checkpoint.pkl          # switch ingredients off, compare
+python scripts/train_evil.py --town runs/town/policy.npz              # a newcomer who only wants harm
+python scripts/record_stages.py --run runs/society                     # (v2) full-length stage replays
+python scripts/build_site.py --run runs/town --v1 runs/economy --out site
 ```
 
-World knobs (map, diet, lifecycle, social rules, happiness weights) are in `civ/society.py`
-(`SocietyConfig`). The v1 economy is still in `civ/economy.py` / `scripts/train_economy.py`.
+Tools that keep experiments cheap and honest:
+
+* **Warm start** (`civ/warmstart.py`): checkpoints store the names of what agents sense and
+  do, so adding an input or an action keeps everything already learned.
+* **Metrics** (`civ/metrics.py`): routine, work, family, inequality, justice and wellbeing
+  scores for any replay.
+* **Ablations** (`scripts/ablate_town.py`): the same checkpoint continued with one ingredient
+  switched off (docking, lunch break, police, gossip), measured over several seeds.
+* **Sandbox** (`civ/sandbox.py`): a live town you can intervene in: remove someone, add a
+  newcomer or a harm-seeker, change a rule mid-life.
+* **Memory** (`civ/mappo_rnn.py`): recurrent policies whose memory lasts a lifetime.
 
 ## Layout
 
 ```
-civ/society.py          Society v2: vectorised town of whole lives, voluntary dealings only
-civ/record_society.py   records 20-year stretches of a world for the viewer
-civ/economy.py          v1: warehouse, farmer, police (everyone learned to steal)
-civ/mappo.py            multi-agent PPO with alive masking, numpy policy runtime
-scripts/                training, site building
-viewer3d/index.html     the 3D Society viewer (GitHub Pages home)
-viewer3d/economy.html   the 3D v1 viewer; viewer/viewer.html is the flat v1 map
+civ/town.py, record_town.py     Town Life (v3) and its hourly replays (docs/TOWN_REPLAY.md)
+civ/sandbox.py                  live interventions on a running town
+civ/metrics.py                  behaviour metrics
+civ/mappo.py, mappo_rnn.py      multi-agent PPO (feed-forward / recurrent), warm start
+civ/wild.py, ppo_wild.py        Wild: JAX world and all-JAX PPO (in development)
+civ/society.py, economy.py      v2 Society, v1 Economy
+scripts/                        training, ablations, site building, scripted baselines
+viewer3d/                       3D viewers (GitHub Pages)
 ```
-
-## Roadmap
-
-1. **Employers and firms as agents**, so wages are paid by someone who chooses to hire.
-2. **More goods** (tools, seeds, housing) and trade between them; prices from supply and demand.
-3. **Collective choices**: people who pool money into shared projects (a granary, a wall) only when
-   each decides it is worth it.
-4. **Embodiment**: drive physical humanoid bodies (learned walking, running, getting up, carrying)
-   from [malecns-test](https://github.com/neomorrison/malecns-test), where a learned controller
-   already runs a 23-joint humanoid in MuJoCo with sim-to-real training. The maleCNS fly-brain
-   controller from that project can optionally act as an instinct layer (escape, pursuit).
