@@ -35,15 +35,15 @@ and slowly sickens; a one-food diet kills in a few years (recorded as malnutriti
 farmer therefore needs grain and fruit from someone, which is what makes trade, sharing and
 specialisation worth it. Each person gets better at producing whatever they produce often.
 
-**Homes.** Resting at your own home heals faster (shelter). Partners who have both slept at home
+**Homes.** Resting at your own home heals faster (shelter). Partners enjoy time together, most of all at home. Partners who have both slept at home
 within about half a year live together, and only couples who live together conceive. Children live in their
 mother's home; grown children who pair up take a free house or move in with family.
 Old age raises the chance of death each year. Pregnancy lasts 45 steps and raises the mother's
 hunger rate. Children under 12 cannot work or trade and depend on food handed to them.
 
 **Work.** Adults ship crates (5¢ each from the outside world, +50% when someone else shipped in the
-last few steps), farm (plant grain for 1¢, pick fruit, milk the herd; more with skill and with helpers on
-neighbouring plots), or enlist as police at the station. Food spoils.
+last few steps), farm (sow grain kept back from a harvest, pick fruit, milk the herd; more with skill and with
+helpers on neighbouring plots; empty plots occasionally re-seed with wild grain), or enlist as police at the station. Food spoils.
 
 **Dealings with a neighbour** (any of the four nearest agents within reach): give food, give a
 coin, buy food at their asking price, take cash (theft), talk (gossip, friendship), court, shun or

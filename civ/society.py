@@ -64,7 +64,8 @@ class SocietyConfig:
     crate_pay: float = 5.0
     team_bonus: float = 0.5
     team_window: int = 6
-    seed_cost: float = 1.0
+    seed_cost: int = 1              # grain kept back from your own stock to sow a plot
+    wild_seed: float = 0.002        # an empty plot re-seeds itself with wild grain
     grow_steps: int = 60           # grain
     fruit_regrow: int = 90
     dairy_regrow: int = 70
@@ -115,6 +116,7 @@ class SocietyConfig:
     w_detained: float = 0.02
     w_friends: float = 0.006
     w_partner: float = 0.012
+    w_together: float = 0.015         # companionship: time with your partner, twice as sweet at home
     w_children: float = 0.03
     w_esteem: float = 0.015
     w_purpose: float = 0.03           # small satisfaction of work itself; its real value is what it feeds
@@ -503,6 +505,11 @@ class Society:
         mutual = (self.opinion > 0.3) & (np.transpose(self.opinion, (0, 2, 1)) > 0.3) & al[:, None, :]
         rew += c.w_friends * np.minimum(mutual.sum(2), 5) * (0.5 + self.traits[..., 0]) * al
         rew += c.w_partner * (self.partner >= 0) * al
+        pa = np.clip(self.partner, 0, S - 1)
+        ar_ = np.arange(M)[:, None]
+        near = (self.partner >= 0) & self.alive[ar_, pa] & (np.abs(self.pos[ar_, pa] - self.pos).max(-1) <= 1)
+        home_both = near & self.at_home() & self.at_home()[ar_, pa]
+        rew += c.w_together * near * (1 + home_both) * al
         reg = (self.opinion * al[:, :, None]).sum(1) / np.maximum(al.sum(1, keepdims=True) - 1, 1)
         rew += c.w_esteem * reg * al
         rew += c.w_security * np.log1p(np.maximum(self.money, 0)) * (0.5 + self.traits[..., 1]) * al
@@ -520,6 +527,8 @@ class Society:
         for arr in (self.saw_theft, self.robbed_by, self.court):
             np.maximum(arr - 1, 0, out=arr)
         self.detained = np.maximum(self.detained - 1, 0)
+        wild = (self.site_t == 0) & (self.site_type == GRAIN) & (r.random(self.site_t.shape) < c.wild_seed)
+        self.site_t[wild] = c.grow_steps
         grow = self.site_t > 0
         self.site_t[grow] -= 1
         self.site_t[grow & (self.site_t == 0)] = -1
@@ -583,9 +592,9 @@ class Society:
         k = int(on.argmax())
         ft = self.site_type[k]
         st = self.site_t[m, k]
-        if ft == GRAIN and st == 0 and self.money[m, i] >= c.seed_cost:
+        if ft == GRAIN and st == 0 and self.food[m, i, GRAIN] >= c.seed_cost:
             self.site_t[m, k] = c.grow_steps
-            self.money[m, i] -= c.seed_cost
+            self.food[m, i, GRAIN] -= c.seed_cost
             rew[m, i] += c.w_purpose * 0.3
             if ev is not None:
                 ev.append((m, "planted", i, -1, c.seed_cost))
