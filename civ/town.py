@@ -270,6 +270,7 @@ class Town:
         self.shun = z(S, S, dt=bool)
         self.shift_pay = z(S)
         self.hired_t = np.full((M, S), 10_000)
+        self.feed_shop = z(S, dt=bool)            # feeding a child: first buying the food at the shop
         self.docked_now = z(S, dt=bool)
         self.act = z(S, dt=int)
         self.stock = z(3)
@@ -547,8 +548,19 @@ class Town:
             box = c.places["station"]
         elif a >= APPLY0:
             box = c.places[JOBS[a - APPLY0 + 1]]
-        elif a in (FEED_CHILD, GO_FAMILY):
-            return True                     # a moving target, set every step
+        elif a == FEED_CHILD:
+            # "get food for my child": with nothing to give, first buy it at the shop
+            self.feed_shop[m, s] = False
+            if self.food[m, s].sum() == 0:
+                hour = self.t[m] % DAY
+                if not (c.shop_hours[0] <= hour < c.shop_hours[1]) or self.money[m, s] < 1:
+                    return False
+                self.feed_shop[m, s] = True
+                box = c.places["market"]
+            else:
+                return True                 # a moving target, set every step
+        elif a == GO_FAMILY:
+            return True
         else:
             return False
         if _in(self.pos[m, s], box):
@@ -601,14 +613,15 @@ class Town:
         doing = self.intent
         sel = (doing == GO_FAMILY) & fam_ok
         self.target = np.where(sel[..., None], self.pos[ar, fam_t], self.target)
-        sel = (doing == FEED_CHILD) & kid_t_ok
+        self.feed_shop &= doing == FEED_CHILD
+        sel = (doing == FEED_CHILD) & kid_t_ok & ~self.feed_shop
         self.target = np.where(sel[..., None], self.pos[ar, hk], self.target)
         lost = ((doing == GO_FAMILY) & ~fam_ok) | ((doing == FEED_CHILD) & ~kid_t_ok)
         self.intent = np.where(lost, -1, self.intent)
         # ---- walk (asleep and detained people stay put)
         walking = (self.intent >= 0) & ~self.asleep & free
         d = self.target - self.pos
-        person_goal = np.isin(self.intent, [GO_FAMILY, FEED_CHILD])
+        person_goal = (self.intent == GO_FAMILY) | ((self.intent == FEED_CHILD) & ~self.feed_shop)
         near_goal = person_goal & (np.abs(d).max(-1) <= 1)
         steps = np.where(walking & ~near_goal, c.speed, 0)
         dx = np.clip(d[..., 0], -steps, steps)
@@ -665,11 +678,31 @@ class Town:
                     if ev is not None:
                         ev.append((m, "hired", s, -1, k))
                 self.intent[m, s] = -1
+            elif it == FEED_CHILD and self.feed_shop[m, s]:
+                j = self._hungriest[m, s]
+                t = int(np.where(self.stock[m] >= 1, self.nutr[m, j] if j >= 0 else self.nutr[m, s], 9).argmin())
+                p = prices[m, t]
+                if j >= 0 and shop_open[m] and self.stock[m, t] >= 1 and self.money[m, s] >= p:
+                    self.money[m, s] -= p
+                    self.treasury[m] += p
+                    self.stock[m, t] -= 1
+                    self.food[m, s, t] += 1
+                    bought[m, s] = True
+                    self.ep["groceries"][m] += 1
+                    if ev is not None:
+                        ev.append((m, "bought " + FOODS[t], s, -1, float(p)))
+                    self.feed_shop[m, s] = False       # now take it to the child
+                    self.intent_t[m, s] = 0
+                else:
+                    self.intent[m, s] = -1
+                    self.feed_shop[m, s] = False
             elif it == FEED_CHILD:
                 j = self._hungriest[m, s]
                 if j >= 0 and self.food[m, s].sum() > 0 and not self.shun[m, j, s] and self.food[m, j].sum() < c.max_food:
-                    self._give_food(m, s, j, rew, ev)
+                    t = self._give_food(m, s, j, rew, ev)
                     social[m, s] = True
+                    if self.age[m, j] < c.school_ages[0] and self.hunger[m, j] > 0.2:
+                        self._eat_one(m, j, t, rew, ev, at_home=False)      # small children are fed by hand
                 self.intent[m, s] = -1
             elif it in (GO_HOME, GO_MARKET, GO_FAMILY, WORK, SCHOOL):
                 self.intent[m, s] = -1          # there: from now on they choose hour by hour
@@ -860,6 +893,7 @@ class Town:
         self.ep["gifts_food"][m] += 1
         if ev is not None:
             ev.append((m, "gave " + FOODS[t], i, j, 1))
+        return t
 
     def _move_in(self, m, i, j, ev):
         """Partners i and j try to share a house: hers, his, or an empty one."""
