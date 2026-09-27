@@ -30,7 +30,7 @@ HEAD = """<!doctype html>
 """
 
 
-def build_replays(run, out_dir, max_stages, sub="replays"):
+def build_replays(run, out_dir, max_stages, sub="replays", note=""):
     """Copy a spread of replay snapshots and write index.json with the training curve."""
     os.makedirs(out_dir, exist_ok=True)
     for old in glob.glob(os.path.join(out_dir, "replay_it*.json")):
@@ -58,7 +58,7 @@ def build_replays(run, out_dir, max_stages, sub="replays"):
             e = {key: float(np.mean([r["econ"][key] for r in win if key in r["econ"]])) for key in win[-1]["econ"]}
             curve.append(dict(it=recs[k]["it"], **{kk: round(v, 2) for kk, v in e.items()}))
     with open(os.path.join(out_dir, "index.json"), "w") as f:
-        json.dump(dict(stages=stages, curve=curve), f)
+        json.dump(dict(stages=stages, curve=curve, note=note), f)
     return len(stages), len(curve)
 
 
@@ -69,9 +69,10 @@ def main():
     ap.add_argument("--out", default="site")
     ap.add_argument("--max-stages", type=int, default=10)
     ap.add_argument("--replays", default="replays", help="replay folder inside --run (e.g. replays60)")
+    ap.add_argument("--note", default="", help="shown under the training curves (e.g. when the rules changed)")
     args = ap.parse_args()
     v3 = os.path.join(HERE, "..", "viewer3d")
-    ns, nc = build_replays(args.run, os.path.join(args.out, "replays"), args.max_stages, args.replays)
+    ns, nc = build_replays(args.run, os.path.join(args.out, "replays"), args.max_stages, args.replays, args.note)
     shutil.copy(os.path.join(v3, "index.html"), os.path.join(args.out, "index.html"))
     shutil.copy(os.path.join(v3, "CREDITS.md"), os.path.join(args.out, "CREDITS.md"))
     for sub in ("assets", "vendor"):

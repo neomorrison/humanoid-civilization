@@ -654,7 +654,7 @@ function drawCharts() {
   const cv = index.curve.map((p) => ({ ...p, happy: p.person_steps ? 1000 * p.happiness / p.person_steps : 0,
     harvests: (p.harvest_grain || 0) + (p.harvest_fruit || 0) + (p.harvest_dairy || 0) }));
   const series = [["years", "Years the town lasted", "per era, out of 60"], ["population", "Population at the end", "people alive"],
-    ["births", "Births", "per era"], ["starved", "Starvation deaths", "per era"], ["malnourished", "Malnutrition deaths", "per era, from a one-food diet"], ["harvests", "Harvests", "per era, all three foods"],
+    ["births", "Births", "per era"], ["starved", "Starvation deaths", "per era"], ["malnourished", "Malnutrition deaths", "per era, from a diet missing a food"], ["harvests", "Harvests", "per era, all three foods"],
     ["trades", "Food sales", "per era"], ["gifts_food", "Food given away", "per era"], ["thefts", "Thefts", "per era"],
     ["detentions", "Arrests", "per era, police and citizens"], ["partnerships", "Partnerships", "per era"],
     ["happy", "Happiness", "per person, per 1,000 steps"]].filter(([k]) => cv.some((p) => p[k] !== undefined));
@@ -680,7 +680,7 @@ function drawCharts() {
       <text x="${L}" y="${Hc - 5}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">it 0</text>
       <text x="${Wc - R}" y="${Hc - 5}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">it ${xmax}</text></svg></div>`;
   }).join("");
-  $("curve-note").textContent = "Each point averages the most recent finished eras at that training iteration. An era ends after 60 years or when everyone has died. The dashed line marks the stage being replayed.";
+  $("curve-note").textContent = "Each point averages the most recent finished eras at that training iteration. An era ends after 60 years or when everyone has died. The dashed line marks the stage being replayed." + (index.note ? " " + index.note : "");
 }
 
 // ------------------------------------------------------------------ main loop
