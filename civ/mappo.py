@@ -18,6 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
+from .numpy_policy import NumpyPolicy  # noqa: F401  (the framework-free actor, re-exported)
 from .ppo import RunningNorm, gae, init_mlp, mlp
 
 
@@ -96,32 +97,6 @@ def export(path, params, norm, meta):
     arrays["n_layers"] = np.int32(len(params["actor"]))
     arrays["meta_json"] = np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8)
     np.savez(path, **arrays)
-
-
-class NumpyPolicy:
-    """Framework-free actor for replays / deployment."""
-
-    def __init__(self, path):
-        z = np.load(path)
-        self.nl = int(z["n_layers"])
-        self.W = [z[f"W{i}"] for i in range(self.nl)]
-        self.b = [z[f"b{i}"] for i in range(self.nl)]
-        self.mean, self.std, self.clip = z["obs_mean"], z["obs_std"], float(z["obs_clip"])
-        self.meta = json.loads(bytes(z["meta_json"]).decode())
-
-    def logits(self, obs):
-        x = np.clip((obs - self.mean) / self.std, -self.clip, self.clip)
-        for i in range(self.nl - 1):
-            x = x @ self.W[i] + self.b[i]
-            x = np.where(x > 0, x, np.expm1(np.minimum(x, 0)))
-        return x @ self.W[-1] + self.b[-1]
-
-    def sample(self, obs, rng):
-        lg = self.logits(obs)
-        p = np.exp(lg - lg.max(1, keepdims=True))
-        p /= p.sum(1, keepdims=True)
-        u = rng.random((len(p), 1))
-        return np.minimum((p.cumsum(1) < u).sum(1), p.shape[1] - 1)   # float rounding can leave the cdf just below u
 
 
 def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, on_snapshot=None, resume=None,

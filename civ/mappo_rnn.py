@@ -23,6 +23,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
+from .numpy_policy import NumpyRNNPolicy  # noqa: F401  (the framework-free actor, re-exported)
 from .ppo import RunningNorm, gae, init_mlp, mlp
 
 
@@ -132,49 +133,6 @@ def export(path, params, norm, meta):
     arrays["obs_clip"] = np.float32(norm.clip)
     arrays["meta_json"] = np.frombuffer(json.dumps(dict(meta, recurrent=True)).encode(), dtype=np.uint8)
     np.savez(path, **arrays)
-
-
-class NumpyRNNPolicy:
-    """Framework-free recurrent actor; keeps one hidden state per person slot."""
-
-    def __init__(self, path):
-        z = np.load(path)
-        self.enc_W, self.enc_b = z["enc_W"], z["enc_b"]
-        self.Wx, self.Wh, self.b = z["gru_Wx"], z["gru_Wh"], z["gru_b"]
-        self.head = [(z[f"head_W{i}"], z[f"head_b{i}"]) for i in range(int(z["n_head"]))]
-        self.mean, self.std, self.clip = z["obs_mean"], z["obs_std"], float(z["obs_clip"])
-        self.meta = json.loads(bytes(z["meta_json"]).decode())
-        self.h = None
-
-    def reset(self, mask):
-        if self.h is not None:
-            self.h[np.asarray(mask, bool)] = 0
-
-    def logits(self, obs):
-        x = np.clip((obs - self.mean) / self.std, -self.clip, self.clip)
-        x = x @ self.enc_W + self.enc_b
-        x = np.where(x > 0, x, np.expm1(np.minimum(x, 0)))
-        if self.h is None or self.h.shape[0] != len(obs):
-            self.h = np.zeros((len(obs), self.Wh.shape[0]), np.float32)
-        H = self.h.shape[1]
-        gx, gh = x @ self.Wx + self.b, self.h @ self.Wh
-        sig = lambda v: 1 / (1 + np.exp(-v))
-        zg, rg = sig(gx[:, :H] + gh[:, :H]), sig(gx[:, H:2 * H] + gh[:, H:2 * H])
-        n = np.tanh(gx[:, 2 * H:] + rg * gh[:, 2 * H:])
-        self.h = ((1 - zg) * n + zg * self.h).astype(np.float32)
-        y = self.h
-        for i, (W, b) in enumerate(self.head):
-            y = y @ W + b
-            if i < len(self.head) - 1:
-                y = np.where(y > 0, y, np.expm1(np.minimum(y, 0)))
-        return y
-
-    def sample(self, obs, rng):
-        lg = self.logits(obs)
-        p = np.exp(lg - lg.max(1, keepdims=True))
-        p /= p.sum(1, keepdims=True)
-        u = rng.random((len(p), 1))
-        return np.minimum((p.cumsum(1) < u).sum(1), p.shape[1] - 1)   # float rounding can leave the cdf just below u
 
 
 def train(env, out, minutes, cfg: RNNConfig | None = None, seed=0, every=50, on_snapshot=None, resume=None,

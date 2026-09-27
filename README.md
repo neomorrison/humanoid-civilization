@@ -55,14 +55,16 @@ Tools that keep experiments cheap and honest:
 * **Ablations** (`scripts/ablate_town.py`): the same checkpoint continued with one ingredient
   switched off (docking, lunch break, police, gossip), measured over several seeds.
 * **Sandbox** (`civ/sandbox.py`): a live town you can intervene in: remove someone, add a
-  newcomer or a harm-seeker, change a rule mid-life.
+  newcomer or a harm-seeker, change a rule mid-life. The site runs it in your browser at
+  `index.html?live=1` (Pyodide in a Web Worker; see [docs/TOWN_REPLAY.md](docs/TOWN_REPLAY.md#live-sandbox)).
 * **Memory** (`civ/mappo_rnn.py`): recurrent policies whose memory lasts a lifetime.
 
 ## Layout
 
 ```
 civ/town.py, record_town.py     Town Life (v3) and its hourly replays (docs/TOWN_REPLAY.md)
-civ/sandbox.py                  live interventions on a running town
+civ/sandbox.py                  live interventions on a running town (also run in the browser)
+civ/numpy_policy.py             trained policies with numpy only (replays, sandbox, browser)
 civ/metrics.py                  behaviour metrics
 civ/mappo.py, mappo_rnn.py      multi-agent PPO (feed-forward / recurrent), warm start
 civ/wild.py, ppo_wild.py        Wild: JAX world and all-JAX PPO (in development)

@@ -6,8 +6,7 @@ from dataclasses import asdict
 
 import numpy as np
 
-from .mappo import NumpyPolicy
-from .mappo_rnn import NumpyRNNPolicy
+from .numpy_policy import NumpyPolicy, NumpyRNNPolicy
 from .town import ACTIVITIES, DAY, DAYS_PER_YEAR, FOODS, JOBS, SEASONS, YEAR, Town, TownConfig
 
 SLOT_COLS = ["pid", "x", "y", "act", "age10", "hunger", "energy", "health", "money", "g", "f", "d", "job", "home",

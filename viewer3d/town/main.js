@@ -6,6 +6,7 @@ import { World } from "./world.js";
 import { Layout } from "./layout.js";
 import { Human } from "./people.js";
 import { UI, doing } from "./ui.js";
+import { Live } from "./live.js";
 import { clamp, lerp, fetchJSON, hash, esc, hexStr } from "./util.js";
 
 const $ = (id) => document.getElementById(id);
@@ -52,12 +53,24 @@ controls.screenSpacePanning = false;
 
 const selRing = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.27, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x19c0cf, transparent: true, opacity: 0.9, depthWrite: false }));
 selRing.visible = false; selRing.renderOrder = 3; scene.add(selRing);
+// harm-seekers (live sandbox): a red ring at their feet and a red marker over their head
+const evilGeo = { ring: new THREE.RingGeometry(0.22, 0.31, 32).rotateX(-Math.PI / 2), mark: new THREE.OctahedronGeometry(0.075).scale(1, 1.5, 1) };
+const evilMat = { ring: new THREE.MeshBasicMaterial({ color: 0xff2a1f, transparent: true, opacity: 0.9, depthWrite: false }), mark: new THREE.MeshBasicMaterial({ color: 0xff2a1f }) };
+const evilMarks = new Map();
+function evilMark(pid) {
+  let m = evilMarks.get(pid);
+  if (!m) {
+    m = { ring: new THREE.Mesh(evilGeo.ring, evilMat.ring), mark: new THREE.Mesh(evilGeo.mark, evilMat.mark) };
+    m.ring.renderOrder = 3; scene.add(m.ring); scene.add(m.mark); evilMarks.set(pid, m);
+  }
+  return m;
+}
 
 // ------------------------------------------------------------------ app state
 const app = {
   index: null, stageIdx: 0, rep: null, world: null, layout: null, ui: null,
   tau: 0, k: 0, playing: false, speed: 1, sel: -1, following: false, labels: Q.get("labels") !== "0",
-  humans: new Map(), canteenOpen: false, shopOpen: false, themeKey: 0,
+  humans: new Map(), canteenOpen: false, shopOpen: false, themeKey: 0, live: null,
   select(pid, { follow = false } = {}) {
     app.sel = pid;
     if (pid < 0) app.following = false; else if (follow) app.following = true;
@@ -97,8 +110,9 @@ function buildSpeeds() {
     el.appendChild(b);
   });
 }
-function setPlaying(p) { app.playing = p; $("play").textContent = p ? "Pause" : (app.rep && app.tau >= app.rep.tEnd - 0.01 ? "Replay" : "Play"); }
-$("play").addEventListener("click", () => { if (!app.rep) return; if (app.tau >= app.rep.tEnd - 0.01) app.seek(app.rep.t0); setPlaying(!app.playing); });
+function setPlaying(p) { app.playing = p; $("play").textContent = p ? "Pause" : app.live ? "Resume" : (app.rep && app.tau >= app.rep.tEnd - 0.01 ? "Replay" : "Play"); }
+app.setPlaying = setPlaying;
+$("play").addEventListener("click", () => { if (!app.rep) return; if (!app.live && app.tau >= app.rep.tEnd - 0.01) app.seek(app.rep.t0); setPlaying(!app.playing); });
 $("jumps").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-h]"); if (!b || !app.rep) return;
   const h = +b.dataset.h, ds = app.rep.daySteps, cur = Math.floor(app.tau) + 1;
@@ -206,7 +220,7 @@ function eventFloaters(k) {
   for (const ei of rep.evByFrame[k]) {
     const e = rep.events[ei], kind = e[1];
     if (QUIET.has(kind)) continue;
-    const big = kind === "born" || kind.startsWith("died") || kind === "partnered" || kind === "theft" || kind === "detained" || kind === "citizens' arrest" || kind === "expecting" || kind === "hired" || kind === "moved in";
+    const big = kind === "born" || kind.startsWith("died") || kind === "partnered" || kind === "theft" || kind === "detained" || kind === "citizens' arrest" || kind === "expecting" || kind === "hired" || kind === "moved in" || kind === "grieves" || kind.startsWith("arrived");
     if (fast && !big) continue;
     const n = perPid.get(e[2]) || 0; if (n >= 1 && !big) continue; perPid.set(e[2], n + 1);
     const p = personPos(kind === "born" ? e[3] : e[2]);
@@ -227,6 +241,9 @@ function eventFloaters(k) {
     else if (kind === "moved in") html = ICONS.house + `<span>moved in</span>`;
     else if (kind.startsWith("fell asleep")) html = ICONS.zzz + `<span>dozed off</span>`;
     else if (kind === "enlisted") html = ICONS.badge + `<span>joined police</span>`;
+    else if (kind === "grieves") html = ICONS.grave + `<span style="color:#e6e9ec">grieves for ${esc(rep.first(e[3]))}</span>`;
+    else if (kind === "arrived") html = ICONS.house + `<span>${esc(rep.first(e[2]))} arrived</span>`;
+    else if (kind === "arrived (evil)") html = ICONS.theft + `<span style="color:#ffb0a8">${esc(rep.first(e[2]))} arrived: harm-seeker</span>`;
     else continue;
     floatAt(p, html, big ? "big" : "", big ? 3.2 : 2.0);
   }
@@ -254,7 +271,7 @@ function updateOverlays(dt) {
       const p = h.root.position, top = h.cur.lie > 0.5 ? 0.35 : h.height + 0.12;
       const q = project(p.x, top, p.z);
       if (!q.ok || q.x < -40 || q.y < -20 || q.x > app.vw + 40 || q.y > app.vh + 40) return;
-      cand.push({ pid, h, q, d: camera.position.distanceToSquared(p) - (pid === app.sel ? 1e6 : 0) });
+      cand.push({ pid, h, q, d: camera.position.distanceToSquared(p) - (pid === app.sel ? 1e6 : 0) - (rep.isEvil(pid) ? 5e5 : 0) });
     });
     cand.sort((a, b) => a.d - b.d);
   }
@@ -269,14 +286,14 @@ function updateOverlays(dt) {
     const hunger = rep.get(row, "hunger"), energy = rep.get(row, "energy");
     const age = sp ? Math.floor(sp.age) : 0, job = sp ? sp.job : "none";
     const compact = far && !sel;
-    const fl = sp ? sp.flags : 0, held = sp && (sp.act === "detained" || fl & 2);
-    const key = `${rep.first(c.pid)}|${age}|${Math.round(hunger / 5)}|${Math.round(energy / 5)}|${job}|${sel}|${compact}|${fl & 23}|${held}`;
+    const fl = sp ? sp.flags : 0, held = sp && (sp.act === "detained" || fl & 2), evil = rep.isEvil(c.pid);
+    const key = `${rep.first(c.pid)}|${age}|${Math.round(hunger / 5)}|${Math.round(energy / 5)}|${job}|${sel}|${compact}|${fl & 23}|${held}|${evil}`;
     if (key !== t.key) {
       t.key = key;
-      const notes = [fl & 4 ? "police" : "", fl & 1 ? "expecting" : "", held ? '<b class="held">held</b>' : fl & 16 ? '<b class="held">thief</b>' : ""].filter(Boolean).join(" · ");
+      const notes = [evil ? '<b class="evil">harm-seeker</b>' : "", fl & 4 ? "police" : "", fl & 1 ? "expecting" : "", held ? '<b class="held">held</b>' : fl & 16 ? '<b class="held">thief</b>' : ""].filter(Boolean).join(" · ");
       t.el.innerHTML = `${esc(rep.first(c.pid))}<small>${age}${notes ? " · " + notes : ""}</small><span class="b2"><i style="--v:${hunger}%;--c:${hunger > 85 ? "#ff6b5e" : "#f0a050"}" title="hunger"></i><i style="--v:${energy}%;--c:#6aa6e6" title="energy"></i></span>`;
-      t.el.style.borderLeftColor = hexStr(JOB_COLORS[job] ?? 0x999999);
-      t.el.classList.toggle("sel", sel); t.el.classList.toggle("far", compact);
+      t.el.style.borderLeftColor = evil ? "#ff3b30" : hexStr(JOB_COLORS[job] ?? 0x999999);
+      t.el.classList.toggle("sel", sel); t.el.classList.toggle("far", compact); t.el.classList.toggle("evil", evil);
       t.w = t.el.offsetWidth || 60; t.h = t.el.offsetHeight || 28;
     }
     let x = c.q.x, y = c.q.y, ok = false;
@@ -304,7 +321,7 @@ function updateOverlays(dt) {
       const asleep = inside.filter((sp) => sp.act === "sleeping").length;
       ht.el.innerHTML = `${far ? "" : `<span>${esc(sur)}</span>`}` + res.slice(0, 6).map((sp) => {
         const inHere = sp.info.type === "house" && sp.info.h === ht.h, zz = inHere && sp.act === "sleeping";
-        return `<i class="d ${inHere ? "" : "out"} ${zz ? "zz" : ""}" style="background:${hexStr(rep.line[sp.pid] ?? 0x999999)}" title="${esc(rep.nm(sp.pid))}: ${inHere ? (zz ? "asleep" : "home") : "out"}"></i>`;
+        return `<i class="d ${inHere ? "" : "out"} ${zz ? "zz" : ""}${rep.isEvil(sp.pid) ? " ev" : ""}" style="background:${hexStr(rep.line[sp.pid] ?? 0x999999)}" title="${esc(rep.nm(sp.pid))}: ${inHere ? (zz ? "asleep" : "home") : "out"}"></i>`;
       }).join("") + (asleep ? `<em>z</em>` : "");
       ht.el.title = `House ${ht.h + 1}: ${inside.length} of ${res.length} home${asleep ? `, ${asleep} asleep` : ""}`;
       ht.w = ht.el.offsetWidth || 40; ht.hh = ht.el.offsetHeight || 16;
@@ -354,7 +371,7 @@ function human(pid) {
   return h;
 }
 function updatePeople(dt, clk) {
-  const rep = app.rep, L = app.layout, seen = new Set();
+  const rep = app.rep, L = app.layout, seen = new Set(), marked = new Set();
   for (let s = 0; s < rep.slots; s++) {
     const st = L.state(s, app.tau);
     if (!st) continue;
@@ -398,8 +415,15 @@ function updatePeople(dt, clk) {
     if (st.born && st.fade < 1 || st.dying) h.setOpacity(st.fade); else h.setOpacity(1);
     h.update(dt);
     if (sp.milking != null) app.world.setMilking(sp.milking, !st.moving);
+    if (rep.isEvil(sp.pid)) {
+      const m = evilMark(sp.pid), k = (h.scale / 0.64) * (1 + 0.1 * Math.sin(clk * 5)), o = h.opacity;
+      m.ring.visible = m.mark.visible = o > 0.3; marked.add(sp.pid);
+      m.ring.position.set(x, 0.025, z); m.ring.scale.set(k, 1, k);
+      m.mark.position.set(x, (h.cur.lie > 0.5 ? 0.45 : h.height + 0.32) + 0.05 * Math.sin(clk * 3), z); m.mark.rotation.y = clk * 2;
+    }
   }
   app.humans.forEach((h, pid) => { if (!seen.has(pid)) { h.root.visible = false; h.lastX = null; } });
+  evilMarks.forEach((m, pid) => { if (!marked.has(pid)) m.ring.visible = m.mark.visible = false; });
   // selection ring
   const h = app.sel >= 0 ? app.humans.get(app.sel) : null;
   selRing.visible = !!(h && h.root.visible);
@@ -457,14 +481,15 @@ function loop() {
   if (!rep) return;
   if (app.playing) {
     app.tau += dt * app.speed;
-    if (app.tau >= rep.tEnd - 0.001) { app.tau = rep.tEnd - 0.001; setPlaying(false); }
+    if (app.tau >= rep.tEnd - 0.001) { app.tau = rep.tEnd - 0.001; if (!app.live) setPlaying(false); }   // live: wait for the next hour
   }
+  if (app.live) app.live.tick();
   const k = rep.kOf(app.tau);
   const c = rep.clock(app.tau);
   if (inView || !app.playing) app.world.setTime(c.hourF, c.day, (d) => rep.seasonOfDay(d), rep.seasons);
   if (k !== app.lastK) { onFrame(k, app.lastK); app.lastK = k; }
   app.k = k;
-  if (!inView && app.playing) { app.ui.panels(); return; }
+  if (!inView && app.playing) { app.ui.panels(); if (app.live) app.live.panels(); return; }
   updatePeople(dt, clk);
   app.world.tick(dt, clk, camera);
   // follow camera
@@ -487,6 +512,7 @@ function loop() {
   updateClock();
   app.ui.timeline();
   app.ui.panels();
+  if (app.live) app.live.panels();
 }
 
 // ------------------------------------------------------------------ loading
@@ -507,22 +533,52 @@ async function selectStage(k) {
   const tp0 = performance.now();
   const rep = new Replay(raw);
   app.perf = { replay: performance.now() - tp0 };
+  install(rep);
+  app.ui.summary(rep, s); app.ui.charts(app.index, k); app.ui.rules(rep); app.ui.legend();
+  app.seek(rep.t0);
+  $("loading").hidden = true;
+}
+function install(rep) {
   app.humans.forEach((h) => scene.remove(h.root)); app.humans.clear();
+  evilMarks.forEach((m) => { scene.remove(m.ring); scene.remove(m.mark); }); evilMarks.clear();
   if (!app.world || !sameTown(app.world.cfg, rep.cfg)) {
     if (app.world) scene.remove(app.world.root);
     const tw0 = performance.now();
     app.world = new World(scene, rep.cfg, { quality });
-    app.perf.world = performance.now() - tw0;
+    if (app.perf) app.perf.world = performance.now() - tw0;
     fitTown();
   }
   app.rep = rep; app.layout = new Layout(rep, app.world);
   buildOverlays(); buildSpeeds(); app.ui.reset();
   app.sel = -1; app.following = false; syncFollowBtn();
-  app.ui.summary(rep, s); app.ui.charts(app.index, k); app.ui.rules(rep); app.ui.legend();
+}
+app.install = install;
+
+// the live sandbox: the simulator itself runs in this page (town/live.js)
+async function bootLive() {
+  resize();
+  app.ui = new UI(app);
+  $("lede").textContent = "This town is running live in your browser: the real Python simulator steps it hour by hour and the trained policy decides what each person does. Pause it, take someone away, bring in a newcomer or someone who only wants to cause harm, or change the rules, and watch how the town reacts.";
+  $("jumps").hidden = true; $("chartsSec").hidden = true;
+  loadingText("Starting the live town…", 0.03);
+  const live = (app.live = new Live(app, Q.get("livebase") || "live/"));
+  live.onProgress = (t, f) => loadingText(t, f);
+  let rep;
+  try { rep = await live.start(Q.has("seed") ? +Q.get("seed") : Math.floor(Math.random() * 1e6)); }
+  catch (err) { loadingText(`The live town could not start: ${err.message}`, 0); $("ltext").classList.add("error"); return; }
+  app.speed = Q.has("speed") ? +Q.get("speed") : 3;
+  install(rep);
+  app.ui.rules(rep); app.ui.legend(); live.mount();
   app.seek(rep.t0);
   $("loading").hidden = true;
+  if (Q.has("cam")) camPreset(Q.get("cam"));
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setPlaying(!reduce && Q.get("paused") !== "1");
+  loop();
 }
+
 async function boot() {
+  if (Q.has("live")) return bootLive();
   resize();
   app.ui = new UI(app);
   loadingText("Loading…", 0.05);
@@ -531,6 +587,11 @@ async function boot() {
   if (!app.index.stages || !app.index.stages.length) { loadingText("replays/index.json lists no stages yet.", 0); return; }
   const stage = Q.has("stage") ? clamp(+Q.get("stage"), 0, app.index.stages.length - 1) : app.index.stages.length - 1;
   app.ui.stages(app.index, stage, (k) => selectStage(k));
+  fetch("live/manifest.json").then((r) => {     // offer the live sandbox when the site has it
+    if (!r.ok) return;
+    const a = document.createElement("a"); a.className = "chip link-chip"; a.href = "?live=1"; a.textContent = "Live sandbox: run it yourself";
+    $("stages").appendChild(a);
+  }).catch(() => {});
   if (Q.has("speed")) app.speed = +Q.get("speed");
   await selectStage(stage);
   if (!app.rep) return;

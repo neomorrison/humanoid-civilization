@@ -109,3 +109,49 @@ slot (unborn or dead), otherwise an array of integers in `slot_cols` order:
 | `expecting` / `born` | pregnancy (i mother, j father) / birth (i child, j mother) |
 | `fell asleep outside` | i collapsed from exhaustion away from home |
 | `died (starved)` / `died (malnutrition)` / `died (old age)` | amount = age |
+
+## Live sandbox
+
+`index.html?live=1` (the "Live sandbox" chip next to the training stages) runs the real
+simulator in the browser instead of playing a recording. `civ/sandbox.py` steps one town under
+the trained policy inside a Web Worker (`viewer3d/town/live-worker.js`) with
+[Pyodide](https://pyodide.org) 0.29.5 (CPython 3.13 + numpy, no JAX), and the page appends each
+simulated hour to a growing replay in exactly the format above, playing it a few hours behind
+the simulation. Pausing pauses the town; the speeds are the replay's.
+
+Interventions land between two simulated hours and the view jumps to the hour they take effect:
+
+* select someone, **Remove (dies now)**: `Sandbox.kill(pid)`; their partner, parents and
+  children grieve (by the rule `Town._die` rewards grief with), their job and bed free up;
+* **Add newcomer** (sex, age) and **Add harm-seeker**: `Sandbox.spawn(sex, age, evil)`. A
+  harm-seeker acts with the harm-seeker policy (`runs/evil/policy.npz`, trained by
+  `scripts/train_evil.py`); without one, with the townspeople's policy but with evil traits (no
+  empathy, all greed and boldness), and the page says so. Harm-seekers get a red ring, a red
+  marker and a red label;
+* **Rules of the town**: every key of `sandbox.RULES` (wage, docking, lunch break, police,
+  gossip, food price, export pay, hunger rate, conception) with its current value.
+
+What the worker exchanges with the sandbox, as JSON: `Sandbox.header()` is the top level above
+without `frames`/`events`/`people`, plus `live: true`, `rules` (key -> explanation) and
+`policies` (`town` / `evil` meta, `evil` null when there is none). `Sandbox.advance(hours)` returns
+only what is new: `{"frames": [...], "events": [...], "people": {...}, "ended": false}`. Each
+live frame also has `"evil": [pid, ...]` (harm-seekers alive) and people have `"evil": true|false`.
+`ended` turns true when everybody has died (the era length is set to 10,000 years, so time never
+runs out while you watch; the page stops by itself after 100 years to keep memory in check).
+
+Extra event kinds in live mode:
+
+| kind | meaning |
+|---|---|
+| `died (removed)` | i was removed by the viewer; amount = age |
+| `grieves` | i grieves for j, who died; amount = the grief (happiness lost) |
+| `arrived` / `arrived (evil)` | newcomer i moved into town / a harm-seeker did |
+| `rule <key>` | a rule was changed; amount = the new value (booleans 0/1) |
+
+Files: `scripts/build_site.py` writes `site/live/` whenever `runs/town/policy.npz` exists (and
+`--no-live` leaves it out): `manifest.json`, `civ/{__init__,numpy_policy,town,record_town,sandbox}.py`
+(checked to be everything the sandbox imports) and `town.npz` / `evil.npz` (`--live-town`,
+`--live-evil`; a harm-seeker policy that fails to load is skipped). Pyodide itself is vendored in
+`viewer3d/vendor/pyodide/` (about 15 MB with the numpy wheel, fetched once and cached by the
+browser); without it the worker loads the same version from `cdn.jsdelivr.net/pyodide`. URL
+options: `seed=N` (default random), `speed=h/s` (default 3), `paused=1`, `livebase=<folder>`.
