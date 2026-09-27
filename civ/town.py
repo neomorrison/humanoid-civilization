@@ -205,6 +205,32 @@ class Town:
         self._reset(np.arange(self.M))
         o, co, _ = self.observe()
         self.obs_dim, self.cobs_dim = o.shape[1], co.shape[1]
+        self.obs_names, self.cobs_names, self.act_names = self._names()
+        assert len(self.obs_names) == self.obs_dim and len(self.cobs_names) == self.cobs_dim
+
+    @staticmethod
+    def _names():
+        """Names of every observation input and action, in order: lets training carry weights across changes."""
+        own = ["sex", "age", "child", "minor", "hunger", "energy", "health", "money", "pregnant", "has_partner", "has_home",
+               "free_beds", "n_kids", "youngest_kid_age", "hungriest_kid_hunger", "police", "detained", "asleep", "my_price",
+               "regard", "education", "job_skill", "on_shift", "to_shift_start", "to_break_end", "workday", "docked",
+               "at_home", "at_work", "at_canteen", "at_market", "at_school", "at_station"]
+        own += [f"job_{j}" for j in JOBS] + [f"carry_{f}" for f in FOODS] + [f"nutrient_{f}" for f in FOODS]
+        own += ["empathy", "greed", "boldness", "charm", "hour_sin", "hour_cos", "night"] + [f"season_{x}" for x in SEASONS]
+        own += ["canteen_open", "school_now"] + [f"price_{f}" for f in FOODS] + [f"stock_{f}" for f in FOODS]
+        own += [f"vacancy_{j}" for j in JOBS[1:]] + ["tenure"]
+        zones = [f"to_{z}_{d}" for z in ("home", "work", "canteen", "school", "market", "partner", "hungriest_kid")
+                 for d in ("x", "y")]
+        fam = ["partner_ok", "partner_hunger", "partner_energy", "partner_home", "partner_asleep"]
+        per = ["dx", "dy", "in_reach", "exists", "sex", "age", "child", "my_partner", "my_child", "my_parent", "sibling",
+               "my_opinion", "attractive", "money", "police", "detained", "saw_steal", "robbed_me", "i_shun", "shuns_me",
+               "courts_me", "price", "hunger", "partnered", "employed"] + [f"has_{f}" for f in FOODS]
+        nbs = [f"nb{k}_{n}" for k in range(K) for n in per]
+        obs = own + zones + fam + nbs
+        cobs = obs + [f"doing_{BASE[i]}" for i in range(WORK, N_BASE)] + \
+            ["g_alive", "g_hunger"] + [f"g_stock_{f}" for f in FOODS] + ["g_treasury"] + [f"g_staff_{j}" for j in JOBS[1:]] + \
+            ["g_pregnant", "g_era_time"]
+        return obs, cobs, list(ACT_NAMES)
 
     # ------------------------------------------------------------------ state
     def _alloc(self):

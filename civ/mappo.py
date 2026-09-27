@@ -124,7 +124,8 @@ class NumpyPolicy:
         return (p.cumsum(1) < u).sum(1)
 
 
-def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, on_snapshot=None, resume=None):
+def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, on_snapshot=None, resume=None,
+          init_from=None, names_if_missing=None):
     cfg = cfg or MAPPOConfig()
     os.makedirs(os.path.join(out, "snapshots"), exist_ok=True)
     key = jax.random.PRNGKey(seed)
@@ -141,6 +142,23 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
         opt_state = opt.init(params)
         onorm.load(ck["onorm"])
         cnorm.load(ck["cnorm"])
+    elif init_from:
+        # warm start: carry the weights of a policy trained on a different layout, matched by name
+        from .warmstart import transplant
+        with open(init_from, "rb") as f:
+            ck = pickle.load(f)
+        for k, v in (names_if_missing or {}).items():
+            ck.setdefault(k, v)
+        new, on_s, cn_s, rep = transplant(ck, jax.tree_util.tree_map(np.asarray, params),
+                                          env.obs_names, env.cobs_names, env.act_names)
+        params = jax.tree_util.tree_map(jnp.asarray, new)
+        opt_state = opt.init(params)
+        onorm.load(on_s)
+        cnorm.load(cn_s)
+        it = ck["iteration"]
+        print(f"warm start from {init_from} (it {it}): {len(rep['new_inputs'])} new inputs, "
+              f"{len(rep['dropped_inputs'])} dropped, new actions {rep['new_actions']}, dropped {rep['dropped_actions']}",
+              flush=True)
     obs, cobs = env.observe_all()
     onorm.update(obs)
     cnorm.update(cobs)
@@ -162,7 +180,8 @@ def train(env, out, minutes, cfg: MAPPOConfig | None = None, seed=0, every=50, o
         export(os.path.join(out, "policy.npz"), params, onorm, dict(iteration=it, samples=samples, obs_dim=env.obs_dim))
         with open(os.path.join(out, "checkpoint.pkl"), "wb") as f:
             pickle.dump(dict(params=jax.tree_util.tree_map(np.asarray, params), iteration=it,
-                             onorm=onorm.state(), cnorm=cnorm.state()), f)
+                             onorm=onorm.state(), cnorm=cnorm.state(), obs_names=getattr(env, "obs_names", None),
+                             cobs_names=getattr(env, "cobs_names", None), act_names=getattr(env, "act_names", None)), f)
         if on_snapshot:
             on_snapshot(path, it, samples)
 

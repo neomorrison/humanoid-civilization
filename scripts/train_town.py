@@ -23,6 +23,7 @@ def main():
     ap.add_argument("--years", type=float, default=60)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", default=None)
+    ap.add_argument("--init-from", default=None, help="warm start from a checkpoint trained on a different layout")
     args = ap.parse_args()
     cfg = TownConfig()
     env = Town(args.worlds, cfg, seed=args.seed)
@@ -39,7 +40,7 @@ def main():
               f"thefts={s['thefts']:.0f}", flush=True)
 
     train(env, args.out, args.minutes, MAPPOConfig(hidden=(256, 256), gamma=0.995, horizon=64, entropy_coef=0.015),
-          seed=args.seed, every=args.every, on_snapshot=on_snapshot, resume=args.resume)
+          seed=args.seed, every=args.every, on_snapshot=on_snapshot, resume=args.resume, init_from=args.init_from)
 
 
 if __name__ == "__main__":
