@@ -117,8 +117,28 @@ export class Replay {
     });
   }
   nm(pid) { return this.name[pid] || (pid ? `#${pid}` : "someone"); }
+  isEvil(pid) { const p = this.people[pid]; return !!(p && p.evil); }     // a harm-seeker (live sandbox)
   first(pid) { return this.nm(pid).split(" ")[0]; }
   sur(pid) { return this.nm(pid).split(" ")[1] || ""; }
+
+  // live mode: more hours arrive from the simulator ({frames, events, people} of civ/sandbox.py advance())
+  append({ frames = [], events = [], people = {} }) {
+    const n0 = this.n;
+    for (const f of frames) this.frames.push(f);
+    this.n = this.frames.length;
+    if (!this.n) return;
+    this.tEnd = this.tOf(this.n - 1) + this.stride;
+    for (let k = n0; k < this.n; k++) this.evByFrame.push([]);
+    if (Object.keys(people).length) { Object.assign(this.people, people); this.nameAll(); }
+    const add = events.slice().sort((a, b) => a[0] - b[0]);
+    const last = this.events.length ? this.events[this.events.length - 1][0] : -Infinity;
+    for (const e of add) this.events.push(e);
+    if (add.length && add[0][0] < last) {     // out of order: rebuild the index
+      this.events.sort((a, b) => a[0] - b[0]);
+      this.evByFrame = Array.from({ length: this.n }, () => []);
+      this.events.forEach((e, i) => { this.evByFrame[this.kOf(e[0])].push(i); });
+    } else for (let i = this.events.length - add.length; i < this.events.length; i++) this.evByFrame[this.kOf(this.events[i][0])].push(i);
+  }
 
   // which events have happened by the end of frame k (index into this.events, exclusive)
   eventsBefore(k) {
@@ -147,14 +167,19 @@ export function evText(rep, e) {
     "moved in": `${a} moved into house ${amt + 1}`, "fell asleep outside": `${a} fell asleep outside`, "fell asleep": `${a} dozed off`,
     "died (starved)": `${a} starved to death at ${Math.floor(amt)}`, "died (malnutrition)": `${a} died of malnutrition at ${Math.floor(amt)}`,
     "died (old age)": `${a} died of old age at ${Math.floor(amt)}`, enlisted: `${a} joined the police`, resigned: `${a} left the police`,
-  })[kind] || `${a}: ${kind}${foods.length && 0 ? "" : ""}`;
+    // live sandbox
+    "died (removed)": `${a} was taken from the town at ${Math.floor(amt)}`, grieves: `${a} grieves for ${b}`,
+    arrived: `${a} arrived in town`, "arrived (evil)": `${a} arrived in town, wanting only to cause harm`,
+  })[kind] || (kind.startsWith("rule ") ? `Rule changed: ${kind.slice(5).replace(/_/g, " ")} ${kind === "rule lunch_break" || kind === "rule police" ? (amt ? "on" : "off") : "= " + Math.round(amt * 1000) / 1000}` : `${a}: ${kind}${foods.length && 0 ? "" : ""}`);
 }
 
 export function evClass(k) {
   if (k === "theft") return "k-crime";
   if (k === "detained" || k === "citizens' arrest" || k === "enlisted") return "k-justice";
   if (k === "partnered" || k === "born" || k === "expecting" || k === "courted") return "k-love";
-  if (k.startsWith("died")) return "k-death";
+  if (k.startsWith("died") || k === "grieves") return "k-death";
+  if (k === "arrived (evil)") return "k-crime";
+  if (k === "arrived" || k.startsWith("rule ")) return "k-live";
   if (k === "earned" || k === "hired") return "k-work";
   if (k === "docked") return "k-docked";
   return "";

@@ -1,0 +1,1 @@
+{"civ": ["__init__.py", "numpy_policy.py", "town.py", "record_town.py", "sandbox.py"], "town": "town.npz", "evil": "evil.npz", "meta": {"town": {"iteration": 500, "samples": 29491200, "obs_dim": 201}, "evil": {"iteration": 826, "samples": 5074944, "obs_dim": 201}}}

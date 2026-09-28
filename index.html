@@ -203,6 +203,45 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
 .rules p { margin: 0; color: var(--muted); max-width: 64ch; }
 .rules strong { color: var(--ink); }
 .note { font-size: 12px; color: var(--muted); }
+/* live sandbox */
+.panel.live { padding: 12px; display: grid; gap: 9px; }
+.panel.live .note { margin: 0; }
+.panel.live .note:empty { display: none; }
+.lstat { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12.5px; color: var(--muted); min-height: 24px; }
+.lstat b { color: var(--ink); font-weight: 600; }
+.lstat-t { display: contents; }
+.lstat .lbtn { padding: 3px 9px; font-size: 12px; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: #2e9a5a; display: inline-block; animation: pulse 1.6s infinite; }
+.pulse.off { background: var(--muted); animation: none; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(46,154,90,0.55); } 70% { box-shadow: 0 0 0 7px rgba(46,154,90,0); } 100% { box-shadow: 0 0 0 0 rgba(46,154,90,0); } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+.live .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px; }
+.live .acts label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.live select, .live input[type="number"] { font: 500 12.5px var(--font); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; min-width: 0; }
+.live input[type="number"] { width: 64px; font-family: var(--mono); }
+.live input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); }
+.lbtn { font: 600 12.5px var(--font); border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.lbtn.ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.lbtn.danger, .card .btns button.danger { background: var(--theft); border-color: var(--theft); color: #fff; }
+.lbtn:disabled, .card .btns button:disabled { opacity: 0.5; cursor: default; }
+.lrules summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.rulegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 4px 12px; margin-top: 8px; }
+.rule { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 3px 6px; border-radius: 6px; }
+.rule .rn { display: grid; line-height: 1.2; min-width: 0; font-weight: 600; }
+.rule .rn small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.rule.changed { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.live .feed ol { max-height: 200px; }
+.feed li.k-live { box-shadow: inset 3px 0 0 var(--accent); }
+.lvinfo { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.chip.link-chip { text-decoration: none; border-color: var(--accent); color: var(--accent); font-family: var(--font); font-weight: 600; }
+/* harm-seekers */
+.hs { font: 700 9.5px var(--font); text-transform: uppercase; letter-spacing: 0.04em; color: #fff; background: var(--theft); border-radius: 3px; padding: 1px 4px; }
+.who .hs { margin-left: 2px; }
+tbody tr.evil td:first-child { box-shadow: inset 3px 0 0 var(--theft); }
+.tag.evil { background: rgba(92,16,14,0.88); }
+.htag .d.ev { outline: 2px solid #ff3b30; outline-offset: 1px; }
+.tag b.evil { color: #ffb3ab; font-weight: 700; }
+.card .evilnote { margin-top: 8px; font-size: 12.5px; border-left: 3px solid var(--theft); padding: 5px 8px; background: var(--surface-2); border-radius: 4px; }
 .error { color: var(--theft); }
 @media (max-width: 480px) {
   h1 { font-size: 22px; }
@@ -222,7 +261,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
         <button class="theme" id="theme" type="button" title="Switch light / dark">Theme: auto</button>
       </nav>
     </div>
-    <p class="lede">Learning agents live whole lives in one small town. Every hour each of them decides what to do: sleep, walk to work, work a shift, take a lunch break at the canteen, buy groceries at the market, go home, raise children, make friends, steal or stop a thief. Nothing is scripted: the routines you see are what they learned, because their only reward is how good their life feels. Pick a training stage to watch how their days change as they learn.</p>
+    <p class="lede" id="lede">Learning agents live whole lives in one small town. Every hour each of them decides what to do: sleep, walk to work, work a shift, take a lunch break at the canteen, buy groceries at the market, go home, raise children, make friends, steal or stop a thief. Nothing is scripted: the routines you see are what they learned, because their only reward is how good their life feels. Pick a training stage to watch how their days change as they learn.</p>
     <div class="stages" id="stages"><span class="label">Training stage</span></div>
     <div class="summary" id="summary"></div>
   </header>
@@ -253,6 +292,20 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
       <div class="legend" id="legend"></div>
     </div>
     <aside class="side">
+      <div class="panel live" id="livePanel" hidden>
+        <div class="phead"><h2>Live sandbox</h2><small>the simulator runs in your browser</small></div>
+        <div class="lstat"><span class="lstat-t" id="lvStat" aria-live="polite"></span><span class="lstat-t" id="lvBtns"></span></div>
+        <div class="acts">
+          <label>Newcomer <select id="lvSex" aria-label="Sex of the newcomer"><option value="">any sex</option><option value="0">woman</option><option value="1">man</option></select></label>
+          <label>age <input id="lvAge" type="number" min="0" max="90" step="1" value="25" inputmode="numeric"></label>
+          <button type="button" class="lbtn" id="lvAdd">Add newcomer</button>
+          <button type="button" class="lbtn danger" id="lvEvil" title="Someone who only wants to make everyone else unhappy">Add harm-seeker</button>
+        </div>
+        <p class="note" id="lvNote"></p>
+        <p class="note" id="lvEvilNote"></p>
+        <details class="lrules"><summary>Rules of the town</summary><div class="rulegrid" id="lvRules"></div></details>
+        <div class="feed"><h2>Reactions</h2><ol id="lvFeed"></ol></div>
+      </div>
       <div class="panel card" id="card"></div>
       <div class="panel people">
         <div class="phead"><h2>People</h2><small id="pcount"></small></div>
@@ -271,7 +324,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-alig
     </aside>
   </section>
 
-  <section class="panel charts">
+  <section class="panel charts" id="chartsSec">
     <h2>How life in town changed while they learned</h2>
     <div class="multiples" id="charts"></div>
     <p class="note" id="curve-note"></p>

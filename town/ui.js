@@ -45,6 +45,7 @@ export class UI {
       const a = e.target.closest("[data-act]"); if (!a) return;
       if (a.dataset.act === "follow") app.setFollow(!app.following);
       if (a.dataset.act === "close") app.select(-1);
+      if (a.dataset.act === "remove" && app.live) { a.disabled = true; app.live.kill(app.sel); }
     });
     $("feed").addEventListener("click", (e) => { const li = e.target.closest("li[data-t]"); if (li) { app.seek(+li.dataset.t + 0.02); if (li.dataset.pid) app.select(+li.dataset.pid, { follow: true }); } });
     this.bindTimeline();
@@ -135,8 +136,9 @@ export class UI {
     $("ledger").innerHTML = rows.map((r) => {
       const sp = r.sp, pid = sp.pid;
       const hc = r.hunger >= 90 ? "var(--theft)" : "var(--hunger)";
-      return `<tr data-pid="${pid}" class="${pid === app.sel ? "sel" : ""}">
-        <td><span class="who"><i class="dot" style="background:${lineCol(rep, pid)}"></i>${esc(r.name)} <small>${sexMark(rep, pid)}${Math.floor(sp.age)}</small></span></td>
+      const evil = rep.isEvil(pid);
+      return `<tr data-pid="${pid}" class="${pid === app.sel ? "sel" : ""}${evil ? " evil" : ""}">
+        <td><span class="who"><i class="dot" style="background:${lineCol(rep, pid)}"></i>${esc(r.name)} <small>${sexMark(rep, pid)}${Math.floor(sp.age)}</small>${evil ? '<span class="hs" title="harm-seeker: only wants to make others unhappy">harm</span>' : ""}</span></td>
         <td>${sp.age < 12 ? '<span class="muted">child</span>' : jobChip(sp.job)}</td>
         <td class="num">${Math.round(r.money)}</td>
         <td><div class="bars" title="hunger ${r.hunger}, energy ${r.energy}"><div class="bar"><i style="width:${r.hunger}%;background:${hc}"></i></div><div class="bar"><i style="width:${r.energy}%;background:var(--energy)"></i></div></div></td>
@@ -149,6 +151,7 @@ export class UI {
     const app = this.app, rep = app.rep, pid = app.sel, el = $("card");
     if (pid < 0) {
       el.innerHTML = `<h2>Follow someone</h2><p class="empty">Click a person in the town or in the list to see their family, what they did all day, and what they earned. The camera follows them.</p>`;
+      this.cardParts = null;
       return;
     }
     const s = rep.pidSlot(L.k, pid), sp = s >= 0 ? L.spots[s] : null, row = s >= 0 ? rep.row(L.k, s) : null;
@@ -175,10 +178,11 @@ export class UI {
     const born = P.born_step != null && P.born_step >= rep.t0 ? rep.clock(P.born_step) : null;
     const status = !sp ? `<span class="muted">${rep.events.some((e) => e[2] === pid && e[1].startsWith("died") && e[0] <= L.t) ? "has died" : "not born yet"}</span>` : esc(doing(sp));
     const flags = sp ? [sp.flags & 1 ? "expecting" : "", sp.flags & 4 ? "police volunteer" : "", sp.flags & 16 ? "seen stealing" : "", sp.flags & 64 ? "docked this hour" : ""].filter(Boolean) : [];
-    el.innerHTML = `
+    const body = `
       <div class="head"><div class="avatar" style="background:${lineCol(rep, pid)}">${esc(rep.first(pid)[0])}</div>
         <div><div class="name">${esc(rep.nm(pid))}</div><div class="sub">${sexMark(rep, pid)} ${sp ? Math.floor(sp.age) + " years" : ""}${sp ? " · " + (sp.age < 12 ? "child" : JOB_LABEL[sp.job] || sp.job) : ""}${sp && sp.home >= 0 ? ` · house ${sp.home + 1}` : ""}${born ? ` · born year ${born.year + 1}` : ""}</div></div></div>
       <div class="row"><span>Now: <b>${status}</b></span>${flags.length ? `<span>${flags.map(esc).join(" · ")}</span>` : ""}</div>
+      ${rep.isEvil(pid) ? `<div class="evilnote"><b>Harm-seeker.</b> Came to town wanting only to make everyone else unhappy${app.live && app.live.header && app.live.header.policies && app.live.header.policies.evil ? ", acting with the trained harm-seeker policy" : "; with no trained harm-seeker policy yet, acts with the townspeople's policy but with no empathy and all greed and boldness"}.</div>` : ""}
       <div class="row"><span>Partner: ${partner ? plink(partner) : '<span class="muted">none</span>'}</span>
         <span>Parents: ${[P.mother, P.father].filter(Boolean).map(plink).join(", ") || '<span class="muted">founders</span>'}</span>
         <span>Children: ${kids.length ? kids.map(plink).join(", ") : '<span class="muted">none</span>'}</span></div>
@@ -187,7 +191,16 @@ export class UI {
       <div class="strip"><h2 style="margin:0 0 4px">Today, hour by hour</h2><div class="cells">${cells.join("")}</div><div class="hrs"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
         <div class="keys">${[...seen].map((a) => `<span><i class="sq" style="background:${ACT_COLORS[a] || "#999"}"></i> ${ACT_LABEL[a] || a}</span>`).join("")}</div></div>
       <div class="today">Today: earned <span class="up">+${coin(earned)}</span> · docked <span class="down">−${coin(docked)}</span> · spent on food <span class="mono">${coin(bought)}</span></div>
-      <div class="btns"><button type="button" data-act="follow" class="${app.following ? "" : "primary"}">${app.following ? "Stop following" : "Follow with camera"}</button><button type="button" data-act="close">Close</button></div>`;
+      `;
+    const btns = `<div class="btns"><button type="button" data-act="follow" class="${app.following ? "" : "primary"}">${app.following ? "Stop following" : "Follow with camera"}</button><button type="button" data-act="close">Close</button>${app.live && sp && !app.live.ended ? `<button type="button" data-act="remove" class="danger" title="${esc(rep.first(pid))} dies now: the family grieves, the job and the bed free up">Remove (dies now)</button>` : ""}</div>`;
+    // the buttons are only replaced when they change, so a click is never lost to an hourly redraw
+    let cp = this.cardParts;
+    if (!cp || cp.pid !== pid || !el.contains(cp.body)) {
+      el.innerHTML = "<div></div><div></div>";
+      cp = this.cardParts = { pid, body: el.firstChild, btns: el.lastChild, b: "", t: "" };
+    }
+    if (body !== cp.b) { cp.b = body; cp.body.innerHTML = body; }
+    if (btns !== cp.t) { cp.t = btns; cp.btns.innerHTML = btns; }
   }
 
   town(L) {
@@ -307,7 +320,7 @@ export class UI {
         if (y % every === 0 && x < Wd - 30 * dpr) g.fillText(`Y${y + 1}`, x + 3 * dpr, 1 * dpr);
       }
       // event marks below the band
-      const COL = { born: "--love", partnered: "--love", theft: "--theft", detained: "--police", "citizens' arrest": "--police" };
+      const COL = { born: "--love", partnered: "--love", theft: "--theft", detained: "--police", "citizens' arrest": "--police", arrived: "--love", "arrived (evil)": "--theft" };
       const cols = {}; ["--love", "--theft", "--police", "--death"].forEach((v) => { cols[v] = cssVar(v); });
       for (const e of rep.events) {
         let v = COL[e[1]]; if (!v && e[1].startsWith("died")) v = "--death";
