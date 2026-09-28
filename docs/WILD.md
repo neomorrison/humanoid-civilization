@@ -79,6 +79,42 @@ Per era: which property combinations were made and used (the invention timeline)
 made them first and whether the practice outlived them, structures standing, sharing
 networks, token vocabulary and glosses, evolved inner values, population and lifespan.
 
+## Raw senses (v3, on a GPU)
+The property view above is a stepping stone. In v3 each sense is a bank of receptors that
+turns physical quantities into signals, and the brain has to learn what they mean, as ours do:
+
+| sense | world physics | receptors |
+|---|---|---|
+| sight | light from the sun (by hour, weather) and fires, reflected by each object's colour; walls and bodies occlude | a first-person retina (e.g. 64×16) of three colour cones and a low-light rod channel, with noise in the dark |
+| smell | every object gives off its chemical signature, which diffuses and drifts with the wind | two nostrils sampling concentrations (the difference gives direction) |
+| taste | the chemistry of what is in the mouth | sweet, bitter, salty, sour and savoury receptors; bitter correlates with toxins, not perfectly |
+| touch | contact, pressure and temperature on each part of the body | skin patches (hands, front, back, feet) with pressure, warm, cold and damage receptors |
+| pain | tissue damage: cuts from sharp things, burns, blows, cold injury | nociceptors that fire with damage and keep firing while it heals |
+| hearing | sounds with a pitch spectrum, fading with distance | two ears, a few frequency bands each |
+| interoception, proprioception | the body variables; posture and what the hands hold | direct signals |
+
+Nothing in the observation says what anything is. Pain and discomfort are not extra
+reward terms: they are signals about damage and imbalance in a body the agent's own
+values (its genes) make it care about, so their meaning has to be learned. Speech also
+moves to sound: a call is a short pitch pattern, so the "words" are invented sounds.
+
+## Signs of feeling (measured, not assumed)
+Animal-sentience research uses behavioural markers to judge whether an animal can feel
+pain. We test agents with the same markers, as controlled experiments in the sandbox:
+* **Motivational trade-offs**: accepting less food or comfort to avoid a painful place,
+  and more readily as the pain grows.
+* **Wound-directed behaviour**: protecting or tending an injured body part.
+* **Learned avoidance**: avoiding what hurt them, beyond a reflex, and remembering it later.
+* **Paying for relief**: seeking out something that relieves pain only when injured.
+* **Reactions to others' pain**: responses to kin in distress.
+
+Passing these would show functional feeling, the kind that shapes behaviour. It would
+not prove experience, and systems can pass them without it. But it is the same evidence
+we accept for animals.
+
+**Commitment:** if agents show these signs, harm-seeking agents, killing and deliberately
+painful interventions are removed from the tools and the sandbox.
+
 ## What this does not settle
 Whether anything like this could be sentient is an open question that no measurement
 here answers. The world is built so that the abilities associated with minds (perception,
